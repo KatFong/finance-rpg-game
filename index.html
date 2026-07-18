@@ -118,6 +118,7 @@
   <div class="stack-btns">
     <button class="btn ghost" id="btn-editfin">更新財務檔案</button>
     <button class="btn ghost" id="btn-shortcut">Apple Shortcuts 快速入帳</button>
+    <button class="btn ghost replay-btn" id="btn-replay-intro"><span class="icon" data-icon="play"></span>重播序章</button>
   </div>
   <div class="section-line"><h3 class="sec-sub">信用卡迷宮</h3><button class="btn small ghost" id="btn-card-advisor"><span class="icon" data-icon="chat"></span>找軍師</button></div>
   <div class="stat-summary three" id="credit-summary"></div>
@@ -209,7 +210,36 @@
     <div class="ob-progress"><div id="ob-bar"></div></div>
     <div class="ob-guide"><span class="guide-avatar"><img class="art" data-art="strategist" alt="錢錢軍師"></span><div><b>錢錢軍師</b><p id="ob-guide-text">終於等到你。等我先了解你嘅旅程起點。</p></div></div>
 
-    <div class="ob-step" data-step="0">
+    <div class="ob-step ob-title-step" data-step="0">
+      <div class="title-logo">
+        <span>COZY FINANCE RPG</span>
+        <h1>理財勇者</h1>
+        <p>失落金幣之章</p>
+      </div>
+      <div class="title-party" aria-hidden="true">
+        <img src="assets/hero.png" alt="">
+        <img class="title-strategist" src="assets/strategist.png" alt="">
+        <img src="assets/hero-female.png" alt="">
+      </div>
+      <button class="btn gold-btn big ob-next title-start"><span class="icon" data-icon="play"></span>開始新旅程</button>
+      <span class="title-hint">輕觸開始 · 進度只會留喺呢部裝置</span>
+    </div>
+
+    <div class="ob-step ob-prologue-step hidden" data-step="1">
+      <span class="ob-kicker">序章 · 被霧遮住的金流地圖</span>
+      <h2>金幣沒有消失，只是失去名字。</h2>
+      <div class="prologue-story">
+        <img src="assets/strategist.png" alt="錢錢軍師">
+        <div class="prologue-beats">
+          <p>每一次付款，都會喺王國地圖留低一條路。</p>
+          <p>慾望魔王最擅長嘅，係令人忘記金幣去咗邊。</p>
+          <p><b>第一個主線任務：</b>同軍師一齊搵返你嘅金流地圖。</p>
+        </div>
+      </div>
+      <button class="btn primary big ob-next">接受軍師召喚</button>
+    </div>
+
+    <div class="ob-step hidden" data-step="2">
       <span class="ob-kicker">第一幕 · 揀選同行者</span>
       <h3>邊位勇者代表你？</h3>
       <div class="hero-choice-grid" id="ob-hero-type">
@@ -225,7 +255,8 @@
       <button class="btn primary big ob-next">跟軍師出發</button>
     </div>
 
-    <div class="ob-step hidden" data-step="1">
+    <div class="ob-step hidden" data-step="3">
+      <span class="ob-quest-label">主線任務 01 · 補給節奏</span>
       <h3>你平時點樣補充冒險資源？</h3>
       <div class="chips col" id="ob-inctype">
         <button class="chip active" data-v="fixed">固定月薪</button>
@@ -236,14 +267,16 @@
       <button class="btn primary big ob-next">下一步</button>
     </div>
 
-    <div class="ob-step hidden" data-step="2">
+    <div class="ob-step hidden" data-step="4">
+      <span class="ob-quest-label">主線任務 01 · 初始護甲</span>
       <h3>你而家嘅護甲有幾厚？</h3>
       <p class="tip">流動存款＝勇者嘅護甲，幫你捱過突發事件。冇就填 0，慢慢打返出嚟。</p>
       <label>存款（HK$）<input id="ob-savings" type="number" inputmode="numeric" placeholder="例如 30000"></label>
       <button class="btn primary big ob-next">下一步</button>
     </div>
 
-    <div class="ob-step hidden" data-step="3">
+    <div class="ob-step hidden" data-step="5">
+      <span class="ob-quest-label">主線任務 01 · 惡龍圖鑑</span>
       <h3>路上有冇債務惡龍？</h3>
       <p class="tip">每筆債＝一條惡龍。遊戲會用「雪球還債法」幫你由最細條開始逐條消滅。冇債可以直接下一步。</p>
       <div id="ob-debts"></div>
@@ -255,7 +288,8 @@
       <button class="btn primary big ob-next">下一步</button>
     </div>
 
-    <div class="ob-step hidden" data-step="4">
+    <div class="ob-step hidden" data-step="6">
+      <span class="ob-quest-label">主線任務 01 · 訂立契約</span>
       <h3>最後，一齊定今次旅程節奏</h3>
       <p class="tip" id="ob-budget-tip"></p>
       <label>預算（HK$）<input id="ob-budget" type="number" inputmode="numeric" placeholder="例如 8000"></label>

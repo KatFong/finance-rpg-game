@@ -204,6 +204,7 @@ const I = {
   close: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>`,
   card: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 10h18M7 15h3"/></svg>`,
   chat: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 12a8 8 0 01-8 8H5l-3 2 1-5a9 9 0 1118-5z"/><path d="M8 12h.01M12 12h.01M16 12h.01"/></svg>`,
+  play: `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5.5v13a1 1 0 001.55.83l9-6.5a1 1 0 000-1.66l-9-6.5A1 1 0 008 5.5z"/></svg>`,
 };
 function initIcons(root) {
   (root || document).querySelectorAll('.icon[data-icon]').forEach((el) => {
@@ -1094,10 +1095,13 @@ function switchScreen(name) {
 
 /* ===================== 新手設定（財務問卷 wizard） ===================== */
 let openFinWizard = null;
+let replayIntro = null;
 function initOnboard() {
   let step = 0, heroType = 'male', incomeType = 'fixed', rate = 0.2, debtsDraft = [];
   const steps = document.querySelectorAll('.ob-step');
   const guideLines = [
+    '',
+    '',
     '終於等到你。先揀一位同行者，再話我知今次旅程想用咩名出發。',
     '每位勇者補充資源嘅方式都唔同，我會按收入節奏安排任務。',
     '存款就似護甲。唔需要同任何人比較，我只想知道今日由邊度開始。',
@@ -1107,10 +1111,14 @@ function initOnboard() {
 
   function showStep(i) {
     step = i;
+    const onboard = document.querySelector('.onboard');
+    onboard.classList.toggle('intro-mode', i < 2);
+    onboard.classList.toggle('title-mode', i === 0);
     steps.forEach((s) => s.classList.toggle('hidden', Number(s.dataset.step) !== i));
-    $('ob-bar').style.width = (((i + 1) / steps.length) * 100) + '%';
-    $('ob-guide-text').textContent = guideLines[i];
-    if (i === 4) {
+    const questProgress = Math.max(1, i - 1);
+    $('ob-bar').style.width = ((questProgress / (steps.length - 2)) * 100) + '%';
+    if (guideLines[i]) $('ob-guide-text').textContent = guideLines[i];
+    if (i === 6) {
       const inc = Number($('ob-income').value) || 0;
       $('ob-budget-tip').textContent = inc > 0 ? `你收入 ${fmt(inc)}。參考：日常使費預算最好唔超過收入七成，剩返嘅留俾儲蓄同還債。` : '';
       if (!$('ob-budget').value && inc > 0) $('ob-budget').value = Math.round(inc * 0.6);
@@ -1136,7 +1144,7 @@ function initOnboard() {
       (b.onclick = () => { debtsDraft.splice(Number(b.dataset.i), 1); renderDebtsDraft(); }));
   }
   document.querySelectorAll('.ob-next').forEach((b) => (b.onclick = () => {
-    if (step === 1 && !(Number($('ob-income').value) > 0)) { toast('填返每月大約收入先'); return; }
+    if (step === 3 && !(Number($('ob-income').value) > 0)) { toast('填返每月大約收入先'); return; }
     showStep(step + 1);
   }));
   $('ob-inctype').querySelectorAll('.chip').forEach((c) => {
@@ -1189,7 +1197,7 @@ function initOnboard() {
     popup(firstTime ? '冒險開始！' : '檔案已更新！', `<p style="color:var(--dim);font-size:13px;line-height:1.7">今日可安心使用係 <b style="color:var(--gold)">${fmt(pace.safe)}</b>；累積一個完整記錄日後，會按本月剩餘預算同日數每日調整。<br>護甲：${armorInfo().name}${dragons ? `<br>惡龍：${dragons} 條 — 軍師已經幫你排好雪球攻擊次序` : ''}<br>而家記低今日第一筆支出，有必爆寶箱！</p>`);
   };
 
-  openFinWizard = () => {
+  openFinWizard = (mode) => {
     $('ob-name').value = S.heroName === '勇者' ? '' : S.heroName;
     heroType = S.heroType === 'female' ? 'female' : 'male';
     $('ob-hero-type').querySelectorAll('.hero-choice').forEach((choice) => {
@@ -1208,9 +1216,10 @@ function initOnboard() {
     $('ob-rate').querySelectorAll('.chip').forEach((c) => c.classList.toggle('active', Number(c.dataset.rate) === rate));
     debtsDraft = S.debts.map((d) => ({ ...d }));
     renderDebtsDraft();
-    showStep(0);
+    showStep(mode === 'intro' || !S.onboarded ? 0 : 2);
     $('onboard-mask').classList.remove('hidden');
   };
+  replayIntro = () => openFinWizard('intro');
 }
 
 /* ===================== Shortcuts 快速入帳指南 ===================== */
@@ -1249,8 +1258,9 @@ function init() {
   $('chest-close').onclick = () => $('chest-mask').classList.add('hidden');
   $('pop-close').onclick = () => $('pop-mask').classList.add('hidden');
   $('boss-claim').onclick = claimBoss;
-  $('btn-editfin').onclick = () => openFinWizard();
+  $('btn-editfin').onclick = () => openFinWizard('edit');
   $('btn-shortcut').onclick = showShortcutGuide;
+  $('btn-replay-intro').onclick = () => replayIntro();
   FinanceAdvisor.init({
     getState: () => S,
     recordExpense: logExpense,
