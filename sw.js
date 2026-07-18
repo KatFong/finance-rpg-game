@@ -1,4 +1,4 @@
-const CACHE_NAME = 'finance-rpg-v2';
+const CACHE_NAME = 'finance-rpg-v4';
 const APP_SHELL = [
   './',
   './index.html',
@@ -6,8 +6,10 @@ const APP_SHELL = [
   './app.js',
   './manifest.webmanifest',
   './assets/bg.png',
+  './assets/camp-dawn-v2.png',
   './assets/boss.png',
   './assets/hero.png',
+  './assets/strategist.png',
   './assets/coin.png',
   './assets/flame.png',
   './assets/shield.png',

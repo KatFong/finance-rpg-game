@@ -7,8 +7,8 @@
   "scope": "./",
   "display": "standalone",
   "orientation": "portrait",
-  "background_color": "#171029",
-  "theme_color": "#1a1230",
+  "background_color": "#edf6f2",
+  "theme_color": "#79cbd7",
   "icons": [
     {
       "src": "assets/hero.png",

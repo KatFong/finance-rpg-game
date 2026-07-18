@@ -165,6 +165,151 @@ function initIcons(root) {
 /* ===================== DOM helpers ===================== */
 const $ = (id) => document.getElementById(id);
 const fmt = (n) => '$' + Math.round(n).toLocaleString('en-US');
+function periodInfo() {
+  const hour = new Date().getHours();
+  if (hour < 6) return { id: 'night', label: '深夜', greeting: '夜深喇' };
+  if (hour < 12) return { id: 'morning', label: '早晨', greeting: '早晨' };
+  if (hour < 18) return { id: 'day', label: '午後', greeting: '午安' };
+  return { id: 'night', label: '夜晚', greeting: '夜晚好' };
+}
+
+function softVibrate(pattern) {
+  if (navigator.vibrate) navigator.vibrate(pattern || 8);
+}
+
+function pulseScene() {
+  const stage = $('camp-stage');
+  if (!stage) return;
+  stage.classList.remove('scene-pulse');
+  void stage.offsetWidth;
+  stage.classList.add('scene-pulse');
+}
+
+let dialogueTimer = null;
+let dialogueFinish = null;
+let activeDialogueKey = '';
+
+function renderDialogueChoices(choices) {
+  const box = $('dialogue-choices');
+  box.innerHTML = '';
+  (choices || []).forEach((choice) => {
+    const button = document.createElement('button');
+    button.className = `dialogue-choice${choice.primary ? ' primary' : ''}`;
+    button.textContent = choice.label;
+    button.onclick = () => {
+      softVibrate(6);
+      choice.action();
+    };
+    box.appendChild(button);
+  });
+}
+
+function speak(speaker, text, choices, immediate) {
+  clearInterval(dialogueTimer);
+  const speakerEl = $('dialogue-speaker');
+  const textEl = $('dialogue-text');
+  const choiceBox = $('dialogue-choices');
+  speakerEl.textContent = speaker;
+  textEl.textContent = '';
+  choiceBox.innerHTML = '';
+
+  let index = 0;
+  const finish = () => {
+    clearInterval(dialogueTimer);
+    textEl.textContent = text;
+    renderDialogueChoices(choices);
+    dialogueFinish = null;
+  };
+  dialogueFinish = finish;
+  textEl.onclick = () => {
+    if (dialogueFinish) dialogueFinish();
+  };
+
+  if (immediate || matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    finish();
+    return;
+  }
+  dialogueTimer = setInterval(() => {
+    index++;
+    textEl.textContent = text.slice(0, index);
+    if (index >= text.length) finish();
+  }, 18);
+}
+
+function sceneChoices(objective) {
+  return [
+    { label: objective.label, primary: true, action: objective.action },
+    { label: '問軍師', action: showAdviceDialogue },
+    { label: '今日狀況', action: showStatusDialogue },
+  ];
+}
+
+function showAdviceDialogue() {
+  activeDialogueKey = 'advice';
+  const advice = buildAdvice()[0];
+  const objective = buildObjective();
+  const text = advice
+    ? `${advice.t}。${advice.b}`
+    : '你已經打好基礎。依家最重要係維持每日記帳，等每一個小決定都有跡可尋。';
+  speak('錢錢軍師', text, [
+    { label: '照住做', primary: true, action: objective.action },
+    { label: '睇每日任務', action: () => switchScreen('quests') },
+    { label: '返回', action: () => renderSceneDialogue(true) },
+  ]);
+}
+
+function showStatusDialogue() {
+  activeDialogueKey = 'status';
+  const spent = daySpend(todayKey());
+  const left = dailyBudget() - spent;
+  const dmg = bossDamage();
+  const max = bossMaxHp();
+  const text = left >= 0
+    ? `今日記咗 ${logsToday()} 筆，仲有 ${fmt(left)} 能量。本週對魔王造成咗 ${fmt(dmg)} 傷害，距離目標仲差 ${fmt(Math.max(0, max - dmg))}。步調幾穩。`
+    : `今日記咗 ${logsToday()} 筆，暫時超出預算 ${fmt(Math.abs(left))}。唔使否定今日，知道發生咗咩，聽日就有辦法調整。`;
+  speak('錢錢軍師', text, [
+    { label: '記一筆', primary: true, action: () => openLogSheet('expense') },
+    { label: '睇戰績', action: () => switchScreen('stats') },
+    { label: '返回', action: () => renderSceneDialogue(true) },
+  ]);
+}
+
+function renderSceneDialogue(force) {
+  const objective = buildObjective();
+  const spent = daySpend(todayKey());
+  const active = dayActive(todayKey());
+  const dead = bossDamage() >= bossMaxHp();
+  const period = periodInfo();
+  const key = [todayKey(), S.heroName, dailyBudget(), bossMaxHp(), spent, logsToday(), bossDamage(), S.boss.claimed, objective.label].join('|');
+  if (!force && activeDialogueKey === key) return;
+  activeDialogueKey = key;
+
+  let text;
+  if (dead && !S.boss.claimed) {
+    text = `${S.heroName}，你做到了！慾望魔王已經倒下，今週每一次克制都冇白費。先收好獎勵啦。`;
+  } else if (!active) {
+    text = `${period.greeting}，${S.heroName}。營地已經準備好。記低今日第一筆支出，我就可以將你慳落嘅錢變成攻擊力。`;
+  } else if (spent > dailyBudget()) {
+    text = `我見到今日能量見紅。唔緊要，記帳唔係審判；我哋先知道使咗去邊，再決定聽日點反擊。`;
+  } else if (logsToday() < 3) {
+    text = `做得好，${S.heroName}。今日已經記低 ${logsToday()} 筆，仲有 ${fmt(dailyBudget() - spent)} 能量。再行一步就更接近每日任務。`;
+  } else {
+    text = `今日節奏好穩。你嘅每筆選擇都已經寫入冒險手帳，剩返嘅能量會喺今晚化成對魔王嘅傷害。`;
+  }
+  speak('錢錢軍師', text, sceneChoices(objective));
+}
+
+function showExpenseReaction(cid, amount, first) {
+  activeDialogueKey = `expense-${Date.now()}`;
+  const cat = CATS.find((c) => c.id === cid);
+  const left = dailyBudget() - daySpend(todayKey());
+  const text = left >= 0
+    ? `${cat.name} ${fmt(amount)}，收到。今日仲有 ${fmt(left)} 能量${first ? '，而且第一筆紀錄已經喚醒寶箱。' : '。你仍然掌握住節奏。'}`
+    : `${cat.name} ${fmt(amount)}，已經記低。今日暫時超出 ${fmt(Math.abs(left))}，但你冇逃避，呢一下本身就係有效反擊。`;
+  pulseScene();
+  speak('錢錢軍師', text, sceneChoices(buildObjective()));
+}
+
 let toastTimer = null;
 function toast(msg) {
   const t = $('toast');
@@ -258,6 +403,9 @@ function openLogSheet(mode) {
   sheetMode = mode || 'expense';
   selCat = null; amtStr = '0';
   $('log-step-title').textContent = sheetMode === 'repay' ? '還俾邊條惡龍？' : '今日使咗喺邊度？';
+  $('log-guide').textContent = sheetMode === 'repay'
+    ? '揀一條債務惡龍。我建議先集中火力打最細嗰條。'
+    : '慢慢諗，今日呢筆支出屬於邊一段生活？';
   $('log-cats').classList.remove('hidden');
   $('log-amount').classList.add('hidden');
   renderCats();
@@ -281,8 +429,11 @@ function renderCats() {
       if (sheetMode === 'repay') {
         const d = S.debts.find((x) => x.id === Number(selCat));
         $('log-step-title').textContent = `${d.name} — 還幾多？（尚欠 ${fmt(d.balance)}）`;
+        $('log-guide').textContent = `每一蚊都係有效傷害。輸入今次想對 ${d.name} 造成幾多傷害。`;
       } else {
-        $('log-step-title').textContent = `${CATS.find((c) => c.id === selCat).name} — 使咗幾多？`;
+        const cat = CATS.find((c) => c.id === selCat);
+        $('log-step-title').textContent = `${cat.name} — 使咗幾多？`;
+        $('log-guide').textContent = `${cat.name}，明白。輸入銀碼，我會幫你計返今日仲有幾多能量。`;
       }
       $('log-cats').classList.add('hidden');
       $('log-amount').classList.remove('hidden');
@@ -311,6 +462,8 @@ function logExpense(cid, amount, opts) {
   save();
   renderAll();
   toast(`已記低 ${fmt(amount)} · XP +10`);
+  softVibrate([8, 30, 8]);
+  setTimeout(() => showExpenseReaction(cid, amount, first), 80);
   setTimeout(() => maybeChest(first), 350);
   return true;
 }
@@ -322,7 +475,7 @@ function saveSheet() {
     repayDebt(Number(selCat), amount);
   } else {
     closeLogSheet();
-    logExpense(selCat, amount);
+    if (logExpense(selCat, amount)) switchScreen('home');
   }
 }
 
@@ -346,6 +499,8 @@ function repayDebt(debtId, amount) {
     save(); renderAll();
     popup('斬龍成功！', `<p style="color:var(--dim);font-size:13px;line-height:1.7">對 <b style="color:var(--text)">${d.name}</b> 造成 <b style="color:var(--hp2)">${fmt(pay)}</b> 傷害！<br>尚欠 ${fmt(d.balance)}<br><b style="color:var(--gold)">+20 金幣 · +30 XP</b></p>`);
   }
+  softVibrate([12, 35, 18]);
+  pulseScene();
 }
 
 /* ===================== 零消費 ===================== */
@@ -358,6 +513,8 @@ function markNoSpend() {
   gainGold(30);
   gainXp(50);
   save(); renderAll();
+  softVibrate([8, 25, 8]);
+  pulseScene();
   popup('零消費達成！', `<p style="color:var(--dim);font-size:13px;line-height:1.7">勇者今日完全冇俾慾望魔王吸血！<br><b style="color:var(--gold)">+30 金幣 · +50 XP</b><br>成日嘅預算全數化為攻擊力。</p>`);
   setTimeout(() => maybeChest(true), 400);
 }
@@ -518,6 +675,11 @@ function renderHud() {
 }
 function renderHome() {
   ensureBoss();
+  const period = periodInfo();
+  document.body.dataset.period = period.id;
+  $('scene-period').textContent = period.label;
+  $('scene-date').textContent = new Intl.DateTimeFormat('zh-HK', { month: 'long', day: 'numeric', weekday: 'short' }).format(new Date());
+  $('scene-streak-copy').textContent = S.streak > 0 ? `${S.streak} 日同行` : '今日冒險';
   $('hero-name').textContent = S.heroName;
   $('hero-img').classList.toggle('cape', S.items.cape > 0);
   // 今日 HP
@@ -531,6 +693,12 @@ function renderHome() {
   $('hero-sub').textContent = spent > dailyBudget()
     ? `今日超支 ${fmt(spent - dailyBudget())}，聽日反擊！`
     : (dayActive(todayKey()) ? `今日仲有 ${fmt(left)} 彈藥，慳得愈多斬魔王愈痛` : '今日未記帳，記低第一筆有必爆寶箱');
+  $('budget-status').textContent = !dayActive(todayKey())
+    ? '等待第一步'
+    : (spent > dailyBudget() ? '需要休整' : (pct > 40 ? '步調輕鬆' : '留意能量'));
+  $('hero-mood').textContent = spent > dailyBudget()
+    ? '準備反擊'
+    : (dayActive(todayKey()) ? '節奏穩定' : '準備出發');
   // 魔王
   const dmg = bossDamage(), max = bossMaxHp();
   const hp = Math.max(0, max - dmg);
@@ -576,6 +744,7 @@ function renderHome() {
       adv.map((a) => `<div class="adv"><b>${a.t}</b><p>${a.b}</p></div>`).join('') +
       `<p class="disclaimer">一般理財教育資訊，唔構成專業財務意見。</p>`
     : '';
+  renderSceneDialogue();
 }
 function renderQuests() {
   const m = meta(todayKey());
@@ -695,11 +864,19 @@ let openFinWizard = null;
 function initOnboard() {
   let step = 0, incomeType = 'fixed', rate = 0.2, debtsDraft = [];
   const steps = document.querySelectorAll('.ob-step');
+  const guideLines = [
+    '終於等到你。先話我知，今次旅程想用咩名出發？',
+    '每位勇者補充資源嘅方式都唔同，我會按收入節奏安排任務。',
+    '存款就似護甲。唔需要同任何人比較，我只想知道今日由邊度開始。',
+    '債務唔係污點，只係地圖上要逐條處理嘅惡龍。我會幫你排好攻擊次序。',
+    '資料齊喇。定好每日能量同每週目標，就可以正式紮營。',
+  ];
 
   function showStep(i) {
     step = i;
     steps.forEach((s) => s.classList.toggle('hidden', Number(s.dataset.step) !== i));
     $('ob-bar').style.width = (((i + 1) / steps.length) * 100) + '%';
+    $('ob-guide-text').textContent = guideLines[i];
     if (i === 4) {
       const inc = Number($('ob-income').value) || 0;
       $('ob-budget-tip').textContent = inc > 0 ? `你收入 ${fmt(inc)}。參考：日常使費預算最好唔超過收入七成，剩返嘅留俾儲蓄同還債。` : '';
@@ -811,6 +988,7 @@ function init() {
   $('btn-log-save').onclick = saveSheet;
   // events
   document.querySelectorAll('.tab').forEach((t) => (t.onclick = () => switchScreen(t.dataset.screen)));
+  document.querySelectorAll('[data-screen-jump]').forEach((t) => (t.onclick = () => switchScreen(t.dataset.screenJump)));
   $('tab-log').onclick = () => openLogSheet('expense');
   $('btn-log-cta').onclick = () => openLogSheet('expense');
   $('btn-nospend').onclick = markNoSpend;
@@ -821,10 +999,6 @@ function init() {
   $('boss-claim').onclick = claimBoss;
   $('btn-editfin').onclick = () => openFinWizard();
   $('btn-shortcut').onclick = showShortcutGuide;
-  // UI 框素材有先至用（nine-slice 邊框）
-  const probe = new Image();
-  probe.onload = () => document.body.classList.add('has-ui');
-  probe.src = 'assets/ui-panel.png';
   initOnboard();
   ensureBoss();
   renderAll();

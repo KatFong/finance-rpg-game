@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="theme-color" content="#1a1230">
+<meta name="theme-color" content="#79cbd7">
 <title>理財勇者</title>
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="assets/hero.png">
@@ -15,6 +15,7 @@
 
 <!-- ===== 頂欄 ===== -->
 <header id="topbar">
+  <button class="brand-mark" data-screen-jump="home" aria-label="返回營地"><span>理財</span><b>勇者</b></button>
   <div class="pill" id="pill-level"><span class="lvl-badge" id="hud-level">1</span><div class="xpwrap"><div class="xpbar"><div id="hud-xpfill"></div></div><span id="hud-xptext" class="xptext"></span></div></div>
   <div class="pill gold"><span class="icon" data-icon="coin"></span><span id="hud-gold">0</span></div>
   <div class="pill streak"><span class="icon" data-icon="flame"></span><span id="hud-streak">0</span></div>
@@ -22,37 +23,60 @@
 
 <!-- ===== 冒險（主頁）===== -->
 <main id="screen-home" class="screen active">
-  <section class="boss-card" id="boss-card">
-    <div class="boss-head">
-      <div>
-        <div class="boss-title">本週魔王</div>
-        <div class="boss-name">慾望魔王</div>
-      </div>
-      <img class="art boss-img" data-art="boss" alt="慾望魔王">
+  <section class="camp-stage" id="camp-stage">
+    <div class="scene-sky"></div>
+    <div class="scene-head">
+      <div class="day-chip"><span id="scene-period">早晨</span><b id="scene-date"></b></div>
+      <div class="scene-streak"><span class="icon" data-icon="flame"></span><span id="scene-streak-copy">今日冒險</span></div>
     </div>
-    <div class="hpbar boss-hp"><div id="boss-hpfill"></div><span id="boss-hptext"></span></div>
-    <div class="boss-hint" id="boss-hint"></div>
-    <button class="btn small gold-btn hidden" id="boss-claim">領取勝利獎勵</button>
+
+    <div class="boss-card" id="boss-card">
+      <div class="boss-copy">
+        <div class="boss-title">本週對手</div>
+        <div class="boss-name">慾望魔王</div>
+        <div class="hpbar boss-hp"><div id="boss-hpfill"></div><span id="boss-hptext"></span></div>
+        <div class="boss-hint" id="boss-hint"></div>
+        <button class="btn small gold-btn hidden" id="boss-claim">領取勝利獎勵</button>
+      </div>
+      <img class="art boss-img scene-actor" data-art="boss" alt="慾望魔王">
+    </div>
+
+    <div class="hero-zone">
+      <img class="art hero-img scene-actor" data-art="hero" id="hero-img" alt="勇者">
+      <div class="hero-tag"><span id="hero-name">勇者</span><b id="hero-mood">準備出發</b></div>
+    </div>
+
+    <div class="dialogue-panel" id="dialogue-panel">
+      <div class="dialogue-portrait"><img class="art" data-art="strategist" alt="錢錢軍師"></div>
+      <div class="dialogue-content">
+        <div class="dialogue-speaker" id="dialogue-speaker">錢錢軍師</div>
+        <p id="dialogue-text" aria-live="polite"></p>
+      </div>
+      <div class="dialogue-choices" id="dialogue-choices"></div>
+    </div>
   </section>
 
-  <section class="hero-zone">
-    <img class="art hero-img" data-art="hero" id="hero-img" alt="勇者">
-    <div class="hero-name" id="hero-name">勇者</div>
-    <div class="budget-label">今日預算 HP</div>
-    <div class="hpbar hero-hp"><div id="hero-hpfill"></div><span id="hero-hptext"></span></div>
-    <div class="hero-sub" id="hero-sub"></div>
-    <div class="armor-line" id="armor-line"></div>
-  </section>
+  <section class="today-deck">
+    <div class="budget-card">
+      <div class="budget-copy"><span>今日能量</span><b id="budget-status">狀態良好</b></div>
+      <div class="hpbar hero-hp"><div id="hero-hpfill"></div><span id="hero-hptext"></span></div>
+      <div class="hero-sub" id="hero-sub"></div>
+      <div class="armor-line" id="armor-line"></div>
+    </div>
 
-  <section class="home-actions">
-    <button class="btn primary big" id="btn-log-cta">記一筆支出</button>
-    <button class="btn ghost" id="btn-nospend">今日零消費</button>
-  </section>
+    <div class="home-actions">
+      <button class="btn primary big" id="btn-log-cta"><span class="icon" data-icon="plus"></span>記一筆支出</button>
+      <button class="btn ghost" id="btn-nospend"><span class="icon" data-icon="check"></span>今日零消費</button>
+    </div>
 
-  <section class="objective-card" id="objective-card">
-    <div class="sec-head">下一個目標<span class="tip-inline" id="objective-reward"></span></div>
-    <div class="objective-main" id="objective-main"></div>
-    <button class="btn small primary" id="objective-action"></button>
+    <div class="objective-card" id="objective-card">
+      <div class="objective-icon"><span class="icon" data-icon="scroll"></span></div>
+      <div class="objective-copy">
+        <div class="sec-head">下一個目標<span class="tip-inline" id="objective-reward"></span></div>
+        <div class="objective-main" id="objective-main"></div>
+      </div>
+      <button class="btn small primary" id="objective-action"></button>
+    </div>
   </section>
 
   <section class="debt-card hidden" id="debt-card">
@@ -65,20 +89,20 @@
 
 <!-- ===== 任務 ===== -->
 <main id="screen-quests" class="screen">
-  <h2 class="sec-title">每日任務</h2>
+  <div class="page-head"><span>每日小儀式</span><h2 class="sec-title">今日任務</h2><p>完成日常行動，慢慢養成你嘅理財隊伍。</p></div>
   <div id="quest-list"></div>
-  <p class="tip">任務每日重置。完成任務贏金幣，用嚟喺商店買裝備。</p>
+  <p class="tip page-tip">每日凌晨重置。金幣可以換裝備，令每次記帳更有回報。</p>
 </main>
 
 <!-- ===== 商店 ===== -->
 <main id="screen-shop" class="screen">
-  <h2 class="sec-title">裝備商店</h2>
+  <div class="page-head"><span>營地補給站</span><h2 class="sec-title">裝備商店</h2><p>用每日努力換返嚟嘅金幣，為下一段旅程升級。</p></div>
   <div id="shop-list"></div>
 </main>
 
 <!-- ===== 統計 ===== -->
 <main id="screen-stats" class="screen">
-  <h2 class="sec-title">戰績</h2>
+  <div class="page-head"><span>冒險手帳</span><h2 class="sec-title">理財戰績</h2><p>唔只睇數字，仲睇到你一步步建立緊嘅生活節奏。</p></div>
   <div class="stat-summary" id="stat-summary"></div>
   <h3 class="sec-sub">資產負債（勇者屬性）</h3>
   <div class="stat-summary three" id="bs-summary"></div>
@@ -107,6 +131,7 @@
 <div class="sheet-mask hidden" id="log-mask">
   <div class="sheet" id="log-sheet">
     <div class="sheet-handle"></div>
+    <div class="sheet-guide"><span class="guide-avatar"><img class="art" data-art="strategist" alt="錢錢軍師"></span><p id="log-guide">講我知發生咗咩事，我會幫你記入今日冒險。</p></div>
     <h3 class="sheet-title" id="log-step-title">今日使咗喺邊度？</h3>
     <div id="log-cats" class="cat-grid"></div>
     <div id="log-amount" class="hidden">
@@ -141,17 +166,18 @@
 <div class="modal-mask hidden" id="onboard-mask">
   <div class="modal onboard">
     <div class="ob-progress"><div id="ob-bar"></div></div>
+    <div class="ob-guide"><span class="guide-avatar"><img class="art" data-art="strategist" alt="錢錢軍師"></span><div><b>錢錢軍師</b><p id="ob-guide-text">終於等到你。等我先了解你嘅旅程起點。</p></div></div>
 
     <div class="ob-step" data-step="0">
       <img class="art hero-img" data-art="hero" alt="勇者">
-      <h3>歡迎嚟到理財勇者</h3>
-      <p class="tip">答幾條問題幫你勇者開檔。每個人起點唔同，遊戲會照你嘅實際財務狀態調整。資料只存喺你部機。</p>
+      <h3>你想我點稱呼你？</h3>
+      <p class="tip">每個人起點都唔同，我會按你嘅真實情況調整任務。資料只留喺你部機。</p>
       <label>勇者名（可留空）<input id="ob-name" maxlength="10" placeholder="勇者"></label>
-      <button class="btn primary big ob-next">開始</button>
+      <button class="btn primary big ob-next">就叫呢個名</button>
     </div>
 
     <div class="ob-step hidden" data-step="1">
-      <h3>你嘅收入係點嚟？</h3>
+      <h3>你平時點樣補充冒險資源？</h3>
       <div class="chips col" id="ob-inctype">
         <button class="chip active" data-v="fixed">固定月薪</button>
         <button class="chip" data-v="variable">浮動收入（freelance／佣金／散工）</button>
@@ -162,14 +188,14 @@
     </div>
 
     <div class="ob-step hidden" data-step="2">
-      <h3>而家有幾多存款？</h3>
+      <h3>你而家嘅護甲有幾厚？</h3>
       <p class="tip">流動存款＝勇者嘅護甲，幫你捱過突發事件。冇就填 0，慢慢打返出嚟。</p>
       <label>存款（HK$）<input id="ob-savings" type="number" inputmode="numeric" placeholder="例如 30000"></label>
       <button class="btn primary big ob-next">下一步</button>
     </div>
 
     <div class="ob-step hidden" data-step="3">
-      <h3>有冇欠債？</h3>
+      <h3>路上有冇債務惡龍？</h3>
       <p class="tip">每筆債＝一條惡龍。遊戲會用「雪球還債法」幫你由最細條開始逐條消滅。冇債可以直接下一步。</p>
       <div id="ob-debts"></div>
       <div class="debt-add">
@@ -181,7 +207,7 @@
     </div>
 
     <div class="ob-step hidden" data-step="4">
-      <h3>每月使費預算</h3>
+      <h3>最後，一齊定今次旅程節奏</h3>
       <p class="tip" id="ob-budget-tip"></p>
       <label>預算（HK$）<input id="ob-budget" type="number" inputmode="numeric" placeholder="例如 8000"></label>
       <label>每週儲蓄目標（用嚟打魔王）</label>
