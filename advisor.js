@@ -684,7 +684,7 @@
 
   function open(prompt) {
     $('advisor-mask').classList.remove('hidden');
-    if (!messages.length) addMessage('assistant', '我喺度。你可以記支出、收入、信用卡或分期，直接問理財問題，亦可以先推演一筆消費。資料未齊我會逐樣問，任何紀錄都要你確認先會寫入。');
+    if (!messages.length) addMessage('assistant', '我喺度。你可以記支出、收入、信用卡、分期或每月承諾，直接問理財問題，亦可以先推演一筆消費。資料未齊我會逐樣問，任何紀錄都要你確認先會寫入。');
     renderMessages();
     if (prompt) submitMessage(prompt);
     else $('advisor-input').focus();
@@ -859,6 +859,9 @@
     });
     document.querySelectorAll('[data-advisor-action="decision"]').forEach((button) => {
       button.onclick = () => { close(); bridge.openDecision(); };
+    });
+    document.querySelectorAll('[data-advisor-action="commitment"]').forEach((button) => {
+      button.onclick = () => { close(); bridge.openCommitmentForm(); };
     });
     setupVoice();
     if (bridge.initIcons) bridge.initIcons($('advisor-sheet'));

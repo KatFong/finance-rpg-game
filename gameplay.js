@@ -132,6 +132,65 @@
     };
   }
 
+  function monthlyCommitmentSchedule(commitments, expenses, skips, monthKey, todayKey) {
+    const monthMatch = String(monthKey || '').match(/^(\d{4})-(\d{2})$/);
+    const year = monthMatch ? Number(monthMatch[1]) : 0;
+    const month = monthMatch ? Number(monthMatch[2]) : 0;
+    if (!monthMatch || month < 1 || month > 12) {
+      return { monthKey, items: [], plannedTotal: 0, expectedTotal: 0, paidTotal: 0, outstanding: 0, dueSoonCount: 0, next: null };
+    }
+    const lastDay = new Date(Date.UTC(year, month, 0)).getUTCDate();
+    const skippedIds = new Set((skips || [])
+      .filter((entry) => entry && entry.monthKey === monthKey)
+      .map((entry) => entry.commitmentId));
+    const activeCommitments = (commitments || []).filter((entry) => entry && entry.active !== false);
+    const items = activeCommitments.map((commitment) => {
+      const dueDay = clamp(Math.round(Number(commitment.dueDay) || 1), 1, lastDay);
+      const dueDate = `${monthKey}-${String(dueDay).padStart(2, '0')}`;
+      const matchingPayments = (expenses || []).filter((expense) => (
+        expense && expense.commitmentId === commitment.id
+        && (expense.commitmentMonth === monthKey || (!expense.commitmentMonth && String(expense.dateKey || '').startsWith(monthKey)))
+      ));
+      const paidAmount = Math.round((matchingPayments.reduce((sum, expense) => sum + Math.max(0, Number(expense.amount) || 0), 0) + Number.EPSILON) * 100) / 100;
+      const today = dayOrdinal(todayKey);
+      const due = dayOrdinal(dueDate);
+      const daysUntil = today == null || due == null ? null : due - today;
+      let status = 'upcoming';
+      if (paidAmount > 0) status = 'paid';
+      else if (skippedIds.has(commitment.id)) status = 'skipped';
+      else if (daysUntil != null && daysUntil < 0) status = 'overdue';
+      else if (daysUntil === 0) status = 'due';
+      const remindDays = clamp(Math.round(Number(commitment.remindDays) || 0), 0, 30);
+      return {
+        ...commitment,
+        amount: Math.max(0, Number(commitment.amount) || 0),
+        dueDay,
+        dueDate,
+        daysUntil,
+        paidAmount,
+        status,
+        dueSoon: status === 'due' || status === 'overdue' || (status === 'upcoming' && daysUntil != null && daysUntil <= remindDays),
+      };
+    });
+    const statusOrder = { overdue: 0, due: 1, upcoming: 2, paid: 3, skipped: 4 };
+    items.sort((a, b) => (statusOrder[a.status] - statusOrder[b.status]) || a.dueDay - b.dueDay || String(a.name || '').localeCompare(String(b.name || '')));
+    const plannedTotal = items.reduce((sum, item) => sum + item.amount, 0);
+    const expectedTotal = items.filter((item) => item.status !== 'skipped').reduce((sum, item) => sum + item.amount, 0);
+    const paidTotal = items.reduce((sum, item) => sum + item.paidAmount, 0);
+    const outstanding = items.filter((item) => !['paid', 'skipped'].includes(item.status)).reduce((sum, item) => sum + item.amount, 0);
+    const roundMoney = (value) => Math.round((value + Number.EPSILON) * 100) / 100;
+    return {
+      monthKey,
+      items,
+      plannedTotal: roundMoney(plannedTotal),
+      expectedTotal: roundMoney(expectedTotal),
+      paidTotal: roundMoney(paidTotal),
+      outstanding: roundMoney(outstanding),
+      dueSoonCount: items.filter((item) => item.dueSoon).length,
+      next: items.find((item) => !['paid', 'skipped'].includes(item.status)) || null,
+    };
+  }
+
   function installmentQuote(principal, annualRate, months) {
     const amount = Math.max(0, Number(principal) || 0);
     const term = Math.max(1, Math.round(Number(months) || 1));
@@ -194,6 +253,6 @@
   return {
     WEEKLY_QUESTS, CHAPTERS, GOAL_TYPES, chapterFor, weeklyQuestProgress, routeModel,
     expeditionComplete, expeditionTargetDays, goalSaved, goalProgress, goalPace,
-    installmentQuote, purchaseEncounter,
+    monthlyCommitmentSchedule, installmentQuote, purchaseEncounter,
   };
 });

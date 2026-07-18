@@ -9,7 +9,7 @@
 <title>理財勇者</title>
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="assets/hero.png">
-<link rel="stylesheet" href="style.css?v=40">
+<link rel="stylesheet" href="style.css?v=44">
 </head>
 <body data-screen="home">
 
@@ -184,6 +184,7 @@
   <div class="page-head"><span>冒險手帳</span><h2 class="sec-title">理財戰績</h2><p>唔只睇數字，仲睇到你一步步建立緊嘅生活節奏。</p></div>
   <div class="stats-tabs" role="tablist" aria-label="手帳分類">
     <button class="active" role="tab" aria-selected="true" data-stats-view="overview">總覽</button>
+    <button role="tab" aria-selected="false" data-stats-view="commitments">承諾</button>
     <button role="tab" aria-selected="false" data-stats-view="cards">信用卡</button>
     <button role="tab" aria-selected="false" data-stats-view="history">紀錄</button>
   </div>
@@ -206,6 +207,12 @@
       <button class="btn ghost" id="btn-shortcut">Apple Shortcuts 快速入帳</button>
       <button class="btn ghost replay-btn" id="btn-replay-intro"><span class="icon" data-icon="play"></span>重播序章</button>
     </div>
+  </section>
+  <section class="stats-view" id="stats-commitments" data-stats-panel="commitments">
+    <div class="section-line commitment-section-line"><div><span class="section-kicker">每月承諾塔</span><h3 class="sec-sub">固定帳單</h3></div><button class="btn small primary" id="btn-commitment-add"><span class="icon" data-icon="plus"></span>新增承諾</button></div>
+    <div class="commitment-overview" id="commitment-overview"></div>
+    <div class="commitment-priority" id="commitment-priority"></div>
+    <div class="commitment-list" id="commitment-list"></div>
   </section>
   <section class="stats-view" id="stats-cards" data-stats-panel="cards">
     <div class="section-line"><h3 class="sec-sub">信用卡迷宮</h3><button class="btn small primary" id="btn-card-add"><span class="icon" data-icon="plus"></span>新增信用卡</button></div>
@@ -311,6 +318,56 @@
   </form>
 </div>
 
+<!-- ===== 每月承諾表格 ===== -->
+<div class="sheet-mask hidden" id="commitment-form-mask">
+  <form class="sheet account-sheet" id="commitment-form" role="dialog" aria-modal="true" aria-labelledby="commitment-form-title">
+    <div class="sheet-handle"></div>
+    <div class="form-sheet-head">
+      <div><span>每月承諾塔</span><h3 id="commitment-form-title">新增固定帳單</h3></div>
+      <div class="form-head-actions">
+        <button class="icon-btn hidden" id="commitment-archive" type="button" aria-label="停止呢個每月承諾" title="停止重複"><span class="icon" data-icon="trash"></span></button>
+        <button class="icon-btn" id="commitment-form-close" type="button" aria-label="關閉每月承諾表格" title="關閉"><span class="icon" data-icon="close"></span></button>
+      </div>
+    </div>
+    <input id="commitment-form-id" type="hidden">
+    <div class="account-form-grid">
+      <label class="full"><span>承諾名稱</span><input id="commitment-name" maxlength="32" placeholder="例如：屋租、保險、電話月費" required></label>
+      <label><span>每月預計金額</span><input id="commitment-amount" type="number" inputmode="decimal" min="0.01" step="0.01" placeholder="9000" required></label>
+      <label><span>每月到期日</span><input id="commitment-due-day" type="number" inputmode="numeric" min="1" max="31" placeholder="1" required></label>
+      <label><span>承諾種類</span><select id="commitment-type"><option value="housing">居所</option><option value="utilities">水電通訊</option><option value="insurance">保險</option><option value="subscription">訂閱</option><option value="family">家庭</option><option value="other">其他</option></select></label>
+      <label><span>提前提醒</span><select id="commitment-remind"><option value="0">到期日</option><option value="3" selected>3 日前</option><option value="7">7 日前</option></select></label>
+      <label class="full"><span>預設付款位置 <small>只有尚未計入卡片結欠先選信用卡</small></span><select id="commitment-card"><option value="">銀行／現金</option></select></label>
+      <label class="full toggle-label"><span><b>自動轉帳</b><small>到期時仍會請你確認實際扣款，避免系統假設已付款。</small></span><input id="commitment-autopay" type="checkbox" role="switch"></label>
+    </div>
+    <div class="form-sheet-actions">
+      <button class="btn ghost" id="commitment-form-cancel" type="button">取消</button>
+      <button class="btn primary" type="submit">儲存每月承諾</button>
+    </div>
+  </form>
+</div>
+
+<!-- ===== 每月承諾付款 ===== -->
+<div class="sheet-mask hidden" id="commitment-payment-mask">
+  <form class="sheet account-sheet" id="commitment-payment-form" role="dialog" aria-modal="true" aria-labelledby="commitment-payment-title">
+    <div class="sheet-handle"></div>
+    <div class="form-sheet-head">
+      <div><span>守約行動</span><h3 id="commitment-payment-title">確認固定帳單</h3></div>
+      <button class="icon-btn" id="commitment-payment-close" type="button" aria-label="關閉固定帳單付款表格" title="關閉"><span class="icon" data-icon="close"></span></button>
+    </div>
+    <input id="commitment-payment-id" type="hidden">
+    <div class="payment-balance"><span id="commitment-payment-period">本月預計</span><b id="commitment-payment-estimate">$0</b></div>
+    <div class="account-form-grid payment-form-grid">
+      <label class="full"><span>實際扣款金額</span><input id="commitment-payment-amount" type="number" inputmode="decimal" min="0.01" step="0.01" required></label>
+      <label class="full"><span>付款日期</span><input id="commitment-payment-date" type="date" required></label>
+    </div>
+    <p class="form-note" id="commitment-payment-note">付款會寫成固定／預留支出，計入總支出，但唔會扣減今日日常安心額。</p>
+    <div class="form-sheet-actions commitment-payment-actions">
+      <button class="btn ghost" id="commitment-payment-skip" type="button">本月不用繳</button>
+      <button class="btn primary" type="submit">確認已付款</button>
+    </div>
+  </form>
+</div>
+
 <!-- ===== 信用卡表格 ===== -->
 <div class="sheet-mask hidden" id="card-form-mask">
   <form class="sheet account-sheet" id="card-form" role="dialog" aria-modal="true" aria-labelledby="card-form-title">
@@ -374,6 +431,7 @@
       <button data-advisor-prompt="我想記一筆收入">記收入</button>
       <button data-advisor-prompt="我想新增一張信用卡">新增信用卡</button>
       <button data-advisor-prompt="我想問一個理財問題">問理財</button>
+      <button data-advisor-action="commitment">每月承諾</button>
       <button data-advisor-action="decision">買前推演</button>
     </div>
     <div class="advisor-draft hidden" id="advisor-draft"></div>
@@ -610,9 +668,9 @@
 <div id="toast" class="hidden"></div>
 
 <script>window.FRPG_CONFIG = { advisorApiUrl: '' };</script>
-<script src="vault.js?v=40"></script>
-<script src="gameplay.js?v=40"></script>
-<script src="advisor.js?v=40"></script>
-<script src="app.js?v=40"></script>
+<script src="vault.js?v=44"></script>
+<script src="gameplay.js?v=44"></script>
+<script src="advisor.js?v=44"></script>
+<script src="app.js?v=44"></script>
 </body>
 </html>

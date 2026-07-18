@@ -12,6 +12,7 @@ const {
   goalSaved,
   goalProgress,
   goalPace,
+  monthlyCommitmentSchedule,
   installmentQuote,
   purchaseEncounter,
 } = require('../gameplay.js');
@@ -82,6 +83,67 @@ test('suggests a neutral weekly pace when a goal has a deadline', () => {
   );
   assert.equal(pace.daysLeft, 29);
   assert.equal(pace.weeklySuggested, 160);
+});
+
+test('clamps a monthly commitment to the real last day of the month', () => {
+  const schedule = monthlyCommitmentSchedule(
+    [{ id: 'rent', name: '屋租', amount: 9000, dueDay: 31, remindDays: 3, active: true }],
+    [],
+    [],
+    '2026-02',
+    '2026-02-27'
+  );
+  assert.equal(schedule.items[0].dueDate, '2026-02-28');
+  assert.equal(schedule.items[0].daysUntil, 1);
+  assert.equal(schedule.items[0].dueSoon, true);
+  assert.equal(schedule.outstanding, 9000);
+});
+
+test('marks linked commitment payments without counting unrelated fixed expenses', () => {
+  const schedule = monthlyCommitmentSchedule(
+    [{ id: 'rent', name: '屋租', amount: 9000, dueDay: 1, active: true }],
+    [
+      { commitmentId: 'rent', commitmentMonth: '2026-07', dateKey: '2026-06-30', amount: 9000 },
+      { commitmentId: null, dateKey: '2026-07-01', amount: 500 },
+    ],
+    [],
+    '2026-07',
+    '2026-07-19'
+  );
+  assert.equal(schedule.items[0].status, 'paid');
+  assert.equal(schedule.paidTotal, 9000);
+  assert.equal(schedule.outstanding, 0);
+});
+
+test('removes a skipped commitment from this month without archiving the rule', () => {
+  const schedule = monthlyCommitmentSchedule(
+    [
+      { id: 'insurance', name: '保險', amount: 600, dueDay: 20, active: true },
+      { id: 'old', name: '舊訂閱', amount: 80, dueDay: 2, active: false },
+    ],
+    [],
+    [{ commitmentId: 'insurance', monthKey: '2026-07' }],
+    '2026-07',
+    '2026-07-19'
+  );
+  assert.equal(schedule.items.length, 1);
+  assert.equal(schedule.items[0].status, 'skipped');
+  assert.equal(schedule.plannedTotal, 600);
+  assert.equal(schedule.expectedTotal, 0);
+  assert.equal(schedule.next, null);
+});
+
+test('rejects an impossible commitment month without inventing due dates', () => {
+  const schedule = monthlyCommitmentSchedule(
+    [{ id: 'rent', name: '屋租', amount: 9000, dueDay: 1, active: true }],
+    [],
+    [],
+    '2026-99',
+    '2026-07-19'
+  );
+  assert.equal(schedule.items.length, 0);
+  assert.equal(schedule.outstanding, 0);
+  assert.equal(schedule.next, null);
 });
 
 test('shows when a daily purchase needs a funding plan', () => {

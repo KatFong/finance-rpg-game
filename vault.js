@@ -60,6 +60,7 @@
       incomeEntries: list('incomes'),
       cards: list('creditCards'),
       installments: list('installments'),
+      commitments: Array.isArray(state && state.commitments) ? state.commitments.filter((item) => item && item.active !== false).length : 0,
       goals: list('goals'),
       decisions: list('decisionEncounters'),
     };

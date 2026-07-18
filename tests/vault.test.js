@@ -10,6 +10,7 @@ const sampleState = () => ({
   incomes: [{ id: 'income-1', amount: 20000 }],
   creditCards: [{ id: 'card-1', name: 'Visa' }],
   installments: [],
+  commitments: [{ id: 'rent', name: '屋租', active: true }],
   goals: [{ id: 'goal-1', name: '旅行' }],
   decisionEncounters: [{ id: 'decision-1', status: 'waiting' }],
 });
@@ -46,6 +47,6 @@ test('sanitizes markup-like strings before checksumming', () => {
 test('summarizes the records a player needs to recognize', () => {
   assert.deepEqual(summary(sampleState()), {
     heroName: 'Kat', expenses: 1, incomeEntries: 1, cards: 1,
-    installments: 0, goals: 1, decisions: 1,
+    installments: 0, commitments: 1, goals: 1, decisions: 1,
   });
 });
