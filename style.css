@@ -325,7 +325,7 @@ body[data-period="night"] .boss-card { filter: brightness(1.2) saturate(1.1); }
 
 /* ===== Daily deck ===== */
 .today-deck { display: grid; gap: 10px; padding: 14px 0 2px; }
-.budget-card, .objective-card, .debt-card, .advice-card,
+.budget-card, .objective-card, .reflection-card, .debt-card, .advice-card,
 .quest, .shop-item, .stat-box, .chart7, .log-row {
   border: 1px solid var(--line);
   border-bottom-width: 3px;
@@ -369,6 +369,20 @@ body[data-period="night"] .boss-card { filter: brightness(1.2) saturate(1.1); }
 .objective-main { color: var(--dim); font-size: 11px; line-height: 1.45; }
 .objective-main b { color: var(--leaf-deep); }
 .objective-card .btn { max-width: 112px; }
+
+.reflection-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px 12px;
+  padding: 12px 14px;
+  border-left: 4px solid var(--sun);
+}
+.reflection-kicker { grid-column: 1 / -1; color: #9b6817; font-size: 9px; font-weight: 900; }
+.reflection-copy { min-width: 0; }
+.reflection-copy b { display: block; color: var(--ink); font-size: 13px; line-height: 1.35; }
+.reflection-copy p { margin-top: 3px; color: var(--dim); font-size: 11px; line-height: 1.5; }
+.reflection-card .btn { max-width: 150px; }
 
 .debt-card, .advice-card { padding: 14px; margin-top: 10px; }
 .debt-row { margin-bottom: 11px; }
@@ -495,6 +509,29 @@ body[data-period="night"] .boss-card { filter: brightness(1.2) saturate(1.1); }
 .sheet-guide p { font-size: 11px; font-weight: 700; line-height: 1.4; }
 .sheet-title { margin: 11px 0 13px; color: var(--ink); text-align: center; font-size: 17px; }
 
+.quick-log { margin: -3px 0 13px; padding-bottom: 12px; border-bottom: 1px solid var(--line); }
+.quick-log-head { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 7px; }
+.quick-log-head b { color: var(--ink); font-size: 11px; }
+.quick-log-head span { color: var(--dim); font-size: 9px; }
+.quick-log-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 7px; }
+.quick-log-btn {
+  min-width: 0;
+  min-height: 50px;
+  display: grid;
+  align-content: center;
+  gap: 2px;
+  padding: 7px 5px;
+  border: 1px solid #aacfc2;
+  border-bottom-width: 3px;
+  border-radius: var(--radius);
+  background: #eaf6ef;
+  color: var(--ink);
+  cursor: pointer;
+}
+.quick-log-btn span { overflow: hidden; font-size: 9px; font-weight: 800; text-overflow: ellipsis; white-space: nowrap; }
+.quick-log-btn b { color: var(--leaf-deep); font-size: 13px; }
+.quick-log-btn:active { transform: translateY(2px); border-bottom-width: 1px; }
+
 .cat-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
 .cat-btn {
   min-height: 86px;
@@ -600,6 +637,7 @@ body[data-period="night"] .boss-card { filter: brightness(1.2) saturate(1.1); }
 .log-row { min-height: 48px; display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 7px; padding: 8px 10px; font-size: 11px; }
 .lr-cat { color: var(--ink); font-weight: 900; }
 .lr-date { margin-left: 6px; color: var(--dim); font-size: 9px; }
+.intent-tag { display: inline-block; margin: 3px 0 0 6px; padding: 2px 5px; border-radius: 7px; background: #e7f2ec; color: var(--leaf-deep); font-size: 8px; font-weight: 900; }
 .lr-amt { color: var(--coral); font-weight: 900; }
 
 /* ===== Conversational onboarding ===== */
@@ -680,6 +718,7 @@ body[data-period="night"] .boss-card { filter: brightness(1.2) saturate(1.1); }
   .budget-card { grid-column: 1; }
   .home-actions { grid-column: 2; align-self: stretch; }
   .objective-card { grid-column: 1 / -1; }
+  .reflection-card { grid-column: 1 / -1; }
   .debt-card, .advice-card { width: calc(50% - 6px); display: inline-block; vertical-align: top; }
   .advice-card { margin-left: 8px; }
 }
@@ -695,6 +734,9 @@ body[data-period="night"] .boss-card { filter: brightness(1.2) saturate(1.1); }
   .dialogue-choice:first-child { grid-column: 1 / -1; }
   .objective-card { grid-template-columns: 36px minmax(0, 1fr); }
   .objective-card .btn { grid-column: 1 / -1; width: 100%; max-width: none; }
+  .reflection-card { grid-template-columns: 1fr; }
+  .reflection-kicker { grid-column: 1; }
+  .reflection-card .btn { width: 100%; max-width: none; }
   .stack-btns { grid-template-columns: 1fr; }
   .debt-add { grid-template-columns: 1fr 76px; }
   .debt-add .btn { grid-column: 1 / -1; }

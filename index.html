@@ -58,7 +58,7 @@
 
   <section class="today-deck">
     <div class="budget-card">
-      <div class="budget-copy"><span>今日能量</span><b id="budget-status">狀態良好</b></div>
+      <div class="budget-copy"><span>今日可安心使用</span><b id="budget-status">狀態良好</b></div>
       <div class="hpbar hero-hp"><div id="hero-hpfill"></div><span id="hero-hptext"></span></div>
       <div class="hero-sub" id="hero-sub"></div>
       <div class="armor-line" id="armor-line"></div>
@@ -76,6 +76,15 @@
         <div class="objective-main" id="objective-main"></div>
       </div>
       <button class="btn small primary" id="objective-action"></button>
+    </div>
+
+    <div class="reflection-card" id="reflection-card">
+      <div class="reflection-kicker">本週一個發現</div>
+      <div class="reflection-copy">
+        <b id="reflection-title"></b>
+        <p id="reflection-main"></p>
+      </div>
+      <button class="btn small ghost" id="reflection-action"></button>
     </div>
   </section>
 
@@ -133,6 +142,10 @@
     <div class="sheet-handle"></div>
     <div class="sheet-guide"><span class="guide-avatar"><img class="art" data-art="strategist" alt="錢錢軍師"></span><p id="log-guide">講我知發生咗咩事，我會幫你記入今日冒險。</p></div>
     <h3 class="sheet-title" id="log-step-title">今日使咗喺邊度？</h3>
+    <div id="log-quick" class="quick-log hidden">
+      <div class="quick-log-head"><b>最近常用</b><span>一按就記低</span></div>
+      <div id="log-quick-list" class="quick-log-grid"></div>
+    </div>
     <div id="log-cats" class="cat-grid"></div>
     <div id="log-amount" class="hidden">
       <div class="amount-display"><span class="cur">$</span><span id="amt-text">0</span></div>

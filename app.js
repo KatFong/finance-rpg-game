@@ -13,6 +13,12 @@ const CATS = [
   { id: 'other', name: '其他' },
 ];
 
+const INTENTS = [
+  { id: 'need', name: '生活必需' },
+  { id: 'joy', name: '值得享受' },
+  { id: 'impulse', name: '一時衝動' },
+];
+
 const SHOP = [
   { id: 'sword', name: '勇者之劍', cost: 300, once: true, desc: '對慾望魔王嘅攻擊力 +15%（儲蓄傷害加成）' },
   { id: 'charm', name: '幸運咒文', cost: 250, once: true, desc: '記帳時寶箱出現率 +10%' },
@@ -23,7 +29,7 @@ const SHOP = [
 const QUESTS = [
   { id: 'q_log', name: '記低 3 筆支出', target: 3, gold: 30 },
   { id: 'q_chest', name: '打開 1 個寶箱', target: 1, gold: 20 },
-  { id: 'q_save', name: '今日開支控制喺預算內', target: 1, gold: 40 },
+  { id: 'q_save', name: '今日開支保持喺安心額度內', target: 1, gold: 40 },
 ];
 
 /* ===================== 狀態 ===================== */
@@ -38,7 +44,7 @@ const defaults = () => ({
   gold: 0, xp: 0, level: 1,
   streak: 0, lastLogDate: null,
   items: { sword: 0, charm: 0, shield: 0, cape: 0 },
-  expenses: [],            // {id, ts, dateKey, cat, amount}
+  expenses: [],            // {id, ts, dateKey, cat, amount, intent?}
   dayMeta: {},             // dateKey -> {chests, noSpend, questsClaimed:[]}
   boss: { weekKey: null, claimed: false },
 });
@@ -82,6 +88,27 @@ const chestChance = () => 0.3 + (S.items.charm ? 0.1 : 0);
 
 function daySpend(k) {
   return S.expenses.reduce((s, e) => s + (e.dateKey === k ? e.amount : 0), 0);
+}
+function safeToSpendToday() {
+  const now = new Date();
+  const mk = monthKey();
+  const base = dailyBudget();
+  const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+  const daysLeft = daysInMonth - now.getDate() + 1;
+  const spentBeforeToday = S.expenses.reduce((sum, expense) => (
+    expense.dateKey.startsWith(mk) && expense.dateKey < todayKey() ? sum + expense.amount : sum
+  ), 0);
+  const priorActiveDays = new Set(S.expenses
+    .filter((expense) => expense.dateKey.startsWith(mk) && expense.dateKey < todayKey())
+    .map((expense) => expense.dateKey));
+  Object.keys(S.dayMeta).forEach((key) => {
+    if (key.startsWith(mk) && key < todayKey() && S.dayMeta[key].noSpend) priorActiveDays.add(key);
+  });
+  const remainingMonth = Math.max(0, S.monthlyBudget - spentBeforeToday);
+  const rawSafe = Math.max(0, Math.round(remainingMonth / Math.max(1, daysLeft)));
+  const calibrated = priorActiveDays.size > 0;
+  const safe = calibrated ? Math.min(rawSafe, Math.round(base * 1.25)) : base;
+  return { safe, base, rawSafe, calibrated, remainingMonth, daysLeft, spentBeforeToday };
 }
 function dayActive(k) {
   return (S.dayMeta[k] && S.dayMeta[k].noSpend) || S.expenses.some((e) => e.dateKey === k);
@@ -261,12 +288,16 @@ function showAdviceDialogue() {
 function showStatusDialogue() {
   activeDialogueKey = 'status';
   const spent = daySpend(todayKey());
-  const left = dailyBudget() - spent;
+  const pace = safeToSpendToday();
+  const left = pace.safe - spent;
   const dmg = bossDamage();
   const max = bossMaxHp();
+  const paceBasis = pace.calibrated
+    ? `呢個數已按本月剩餘 ${fmt(pace.remainingMonth)} 同 ${pace.daysLeft} 日路程調整。`
+    : `暫時先用每日平均 ${fmt(pace.base)}；有一日完整紀錄後，我先開始校準。`;
   const text = left >= 0
-    ? `今日記咗 ${logsToday()} 筆，仲有 ${fmt(left)} 能量。本週對魔王造成咗 ${fmt(dmg)} 傷害，距離目標仲差 ${fmt(Math.max(0, max - dmg))}。步調幾穩。`
-    : `今日記咗 ${logsToday()} 筆，暫時超出預算 ${fmt(Math.abs(left))}。唔使否定今日，知道發生咗咩，聽日就有辦法調整。`;
+    ? `今日記咗 ${logsToday()} 筆，仲有 ${fmt(left)} 可以安心使用。${paceBasis}本週對魔王造成咗 ${fmt(dmg)} 傷害。`
+    : `今日記咗 ${logsToday()} 筆，暫時比安心額度多 ${fmt(Math.abs(left))}。唔需要懲罰自己，我哋已經知道情況，之後每一筆都可以重新選擇。`;
   speak('錢錢軍師', text, [
     { label: '記一筆', primary: true, action: () => openLogSheet('expense') },
     { label: '睇戰績', action: () => switchScreen('stats') },
@@ -277,37 +308,69 @@ function showStatusDialogue() {
 function renderSceneDialogue(force) {
   const objective = buildObjective();
   const spent = daySpend(todayKey());
+  const pace = safeToSpendToday();
   const active = dayActive(todayKey());
+  const returning = S.lastLogDate && S.lastLogDate < yesterdayKey();
   const dead = bossDamage() >= bossMaxHp();
   const period = periodInfo();
-  const key = [todayKey(), S.heroName, dailyBudget(), bossMaxHp(), spent, logsToday(), bossDamage(), S.boss.claimed, objective.label].join('|');
+  const key = [todayKey(), S.heroName, pace.safe, bossMaxHp(), spent, logsToday(), bossDamage(), S.boss.claimed, S.lastLogDate, objective.label].join('|');
   if (!force && activeDialogueKey === key) return;
   activeDialogueKey = key;
 
   let text;
   if (dead && !S.boss.claimed) {
     text = `${S.heroName}，你做到了！慾望魔王已經倒下，今週每一次克制都冇白費。先收好獎勵啦。`;
+  } else if (!active && returning) {
+    text = `${period.greeting}，${S.heroName}，歡迎返嚟。唔使補晒之前日子，過去努力亦冇消失；今日記一筆，就可以由而家重新開始。`;
   } else if (!active) {
-    text = `${period.greeting}，${S.heroName}。營地已經準備好。記低今日第一筆支出，我就可以將你慳落嘅錢變成攻擊力。`;
-  } else if (spent > dailyBudget()) {
-    text = `我見到今日能量見紅。唔緊要，記帳唔係審判；我哋先知道使咗去邊，再決定聽日點反擊。`;
+    text = `${period.greeting}，${S.heroName}。今日有 ${fmt(pace.safe)} 可以安心使用。記低第一筆；累積一日完整紀錄後，我會按本月餘額幫你校準步速。`;
+  } else if (spent > pace.safe) {
+    text = `今日已經用過安心額度。記帳唔係審判；肯望清楚發生咗咩，就已經停止咗逃避，下一筆仍然有選擇。`;
   } else if (logsToday() < 3) {
-    text = `做得好，${S.heroName}。今日已經記低 ${logsToday()} 筆，仲有 ${fmt(dailyBudget() - spent)} 能量。再行一步就更接近每日任務。`;
+    text = `做得好，${S.heroName}。今日已經記低 ${logsToday()} 筆，仲有 ${fmt(pace.safe - spent)} 可以安心使用。再行一步就更接近每日任務。`;
   } else {
     text = `今日節奏好穩。你嘅每筆選擇都已經寫入冒險手帳，剩返嘅能量會喺今晚化成對魔王嘅傷害。`;
   }
   speak('錢錢軍師', text, sceneChoices(objective));
 }
 
-function showExpenseReaction(cid, amount, first) {
+let pendingChestTimer = null;
+let pendingIntent = null;
+function showExpenseReaction(cid, amount, first, expenseId) {
+  const expense = S.expenses.find((item) => item.id === expenseId);
+  if (!expense || expense.intent) return;
+  pendingIntent = { cid, amount, first, expenseId };
   activeDialogueKey = `expense-${Date.now()}`;
   const cat = CATS.find((c) => c.id === cid);
-  const left = dailyBudget() - daySpend(todayKey());
+  const left = safeToSpendToday().safe - daySpend(todayKey());
   const text = left >= 0
-    ? `${cat.name} ${fmt(amount)}，收到。今日仲有 ${fmt(left)} 能量${first ? '，而且第一筆紀錄已經喚醒寶箱。' : '。你仍然掌握住節奏。'}`
-    : `${cat.name} ${fmt(amount)}，已經記低。今日暫時超出 ${fmt(Math.abs(left))}，但你冇逃避，呢一下本身就係有效反擊。`;
+    ? `${cat.name} ${fmt(amount)}，收到。今日仲有 ${fmt(left)} 可以安心使用${first ? '，寶箱亦醒咗。' : '。'} 幫我補完故事：呢筆係？`
+    : `${cat.name} ${fmt(amount)}，已經記低。雖然暫時多咗 ${fmt(Math.abs(left))}，但你冇逃避。唔需要解釋，只要話我知：呢筆係？`;
   pulseScene();
-  speak('錢錢軍師', text, sceneChoices(buildObjective()));
+  speak('錢錢軍師', text, INTENTS.map((intent, index) => ({
+    label: intent.name,
+    primary: index === 0,
+    action: () => tagExpenseIntent(expenseId, intent.id, first),
+  })));
+}
+
+function tagExpenseIntent(expenseId, intentId, guaranteedChest) {
+  const expense = S.expenses.find((item) => item.id === expenseId);
+  const intent = INTENTS.find((item) => item.id === intentId);
+  if (!expense || !intent) return;
+  expense.intent = intentId;
+  if (pendingIntent && pendingIntent.expenseId === expenseId) pendingIntent = null;
+  save();
+  renderAll();
+  clearTimeout(pendingChestTimer);
+  pendingChestTimer = setTimeout(() => maybeChest(guaranteedChest), 350);
+  const replies = {
+    need: '生活需要係地圖，唔係失敗。知道基本開支有幾多，之後先可以守住真正重要嘅選擇。',
+    joy: '有意識嘅享受都值得被預算保護。你知道自己用錢換咗乜，呢筆就唔只係一個數字。',
+    impulse: '肯承認一時衝動，已經打斷咗自動駕駛。下一次付款前停三秒，就係一個新選擇。',
+  };
+  activeDialogueKey = `intent-${expenseId}`;
+  speak('錢錢軍師', replies[intentId], sceneChoices(buildObjective()));
 }
 
 let toastTimer = null;
@@ -349,7 +412,7 @@ function touchStreak() {
   else if (!S.lastLogDate) { S.streak = 1; }
   else if (S.items.shield > 0) { S.items.shield--; S.streak++; toast('連勝護盾發動！連勝保住咗'); }
   else {
-    if (S.streak >= 3) toast(`連勝斷咗（之前 ${S.streak} 日）… 由頭嚟過！`);
+    if (S.streak >= 3) toast(`休息完再出發；之前 ${S.streak} 日嘅努力仍然算數`);
     S.streak = 1;
   }
   S.lastLogDate = t;
@@ -395,6 +458,10 @@ function openChest() {
   meta(todayKey()).chests++;
   gainXp(5);
   save(); renderAll();
+  if (pendingIntent) {
+    const prompt = pendingIntent;
+    setTimeout(() => showExpenseReaction(prompt.cid, prompt.amount, prompt.first, prompt.expenseId), 120);
+  }
 }
 
 /* ===================== 記帳 / 還債 sheet ===================== */
@@ -409,9 +476,40 @@ function openLogSheet(mode) {
   $('log-cats').classList.remove('hidden');
   $('log-amount').classList.add('hidden');
   renderCats();
+  renderQuickLogs();
   $('log-mask').classList.remove('hidden');
 }
 function closeLogSheet() { $('log-mask').classList.add('hidden'); }
+function renderQuickLogs() {
+  const quick = $('log-quick');
+  const list = $('log-quick-list');
+  if (sheetMode !== 'expense') {
+    quick.classList.add('hidden');
+    list.innerHTML = '';
+    return;
+  }
+  const seen = new Set();
+  const recent = [...S.expenses]
+    .sort((a, b) => b.ts - a.ts)
+    .filter((expense) => {
+      const key = `${expense.cat}:${expense.amount}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .slice(0, 3);
+  quick.classList.toggle('hidden', recent.length === 0);
+  list.innerHTML = recent.map((expense) => {
+    const cat = CATS.find((item) => item.id === expense.cat);
+    return `<button class="quick-log-btn" data-cat="${expense.cat}" data-amount="${expense.amount}"><span>${cat.name}</span><b>${fmt(expense.amount)}</b></button>`;
+  }).join('');
+  list.querySelectorAll('.quick-log-btn').forEach((button) => {
+    button.onclick = () => {
+      closeLogSheet();
+      if (logExpense(button.dataset.cat, Number(button.dataset.amount))) switchScreen('home');
+    };
+  });
+}
 function renderCats() {
   if (sheetMode === 'repay') {
     $('log-cats').innerHTML = snowballOrder().map((d, i) =>
@@ -435,6 +533,7 @@ function renderCats() {
         $('log-step-title').textContent = `${cat.name} — 使咗幾多？`;
         $('log-guide').textContent = `${cat.name}，明白。輸入銀碼，我會幫你計返今日仲有幾多能量。`;
       }
+      $('log-quick').classList.add('hidden');
       $('log-cats').classList.add('hidden');
       $('log-amount').classList.remove('hidden');
       amtStr = '0'; renderAmt();
@@ -455,7 +554,8 @@ function logExpense(cid, amount, opts) {
   if (!CATS.some((c) => c.id === cid) || !(amount > 0)) return false;
   const t = todayKey();
   const first = logsToday() === 0 && !(S.dayMeta[t] && S.dayMeta[t].noSpend);
-  S.expenses.push({ id: Date.now(), ts: Date.now(), dateKey: t, cat: cid, amount });
+  const entryId = Date.now();
+  S.expenses.push({ id: entryId, ts: entryId, dateKey: t, cat: cid, amount });
   if (meta(t).noSpend) { meta(t).noSpend = false; toast('今日零消費標記已取消'); }
   touchStreak();
   gainXp(10);
@@ -463,8 +563,9 @@ function logExpense(cid, amount, opts) {
   renderAll();
   toast(`已記低 ${fmt(amount)} · XP +10`);
   softVibrate([8, 30, 8]);
-  setTimeout(() => showExpenseReaction(cid, amount, first), 80);
-  setTimeout(() => maybeChest(first), 350);
+  setTimeout(() => showExpenseReaction(cid, amount, first, entryId), 80);
+  clearTimeout(pendingChestTimer);
+  pendingChestTimer = setTimeout(() => maybeChest(first), 12000);
   return true;
 }
 function saveSheet() {
@@ -524,7 +625,7 @@ function questProgress(q) {
   const t = todayKey(), m = meta(t);
   if (q.id === 'q_log') return Math.min(q.target, logsToday());
   if (q.id === 'q_chest') return Math.min(q.target, m.chests);
-  if (q.id === 'q_save') return (dayActive(t) && daySpend(t) <= dailyBudget()) ? 1 : 0;
+  if (q.id === 'q_save') return (dayActive(t) && daySpend(t) <= safeToSpendToday().safe) ? 1 : 0;
   return 0;
 }
 function claimQuest(qid) {
@@ -623,7 +724,7 @@ function buildObjective() {
   if (saveReady) {
     return {
       reward: '+40G',
-      body: '今日開支仲喺預算內，慳錢任務已完成。去任務頁收低獎勵。',
+      body: '今日開支仲喺動態安心額度內，慳錢任務已完成。去任務頁收低獎勵。',
       label: '去任務頁',
       action: () => switchScreen('quests'),
     };
@@ -649,6 +750,61 @@ function buildObjective() {
     body: `魔王仲有 <b>${fmt(Math.max(0, max - dmg))}</b> HP。聽日再記帳，將每日慳落嘅錢變成下一刀。`,
     label: '查看戰績',
     action: () => switchScreen('stats'),
+  };
+}
+
+function buildWeeklyReflection() {
+  const days = weekDays();
+  const daySet = new Set(days);
+  const expenses = S.expenses.filter((expense) => daySet.has(expense.dateKey));
+  const activeDays = days.filter(dayActive).length;
+  const total = expenses.reduce((sum, expense) => sum + expense.amount, 0);
+  const byCat = {};
+  const byIntent = {};
+  expenses.forEach((expense) => {
+    byCat[expense.cat] = (byCat[expense.cat] || 0) + expense.amount;
+    if (expense.intent) byIntent[expense.intent] = (byIntent[expense.intent] || 0) + expense.amount;
+  });
+  const top = Object.entries(byCat).sort((a, b) => b[1] - a[1])[0];
+
+  if (!activeDays) {
+    return {
+      title: '故事可以由今日開始',
+      body: '唔使補返之前每一日。記低眼前一筆，就足夠令理財重新變得可見。',
+      label: '記眼前一筆',
+      action: () => openLogSheet('expense'),
+    };
+  }
+  if (!expenses.length) {
+    return {
+      title: `本週有 ${activeDays} 日零消費`,
+      body: '你有主動確認，而唔係靠「冇記就當冇使」。呢份清楚就係進度。',
+      label: '查看本週節奏',
+      action: () => switchScreen('stats'),
+    };
+  }
+  if (byIntent.impulse) {
+    return {
+      title: `你捉到 ${fmt(byIntent.impulse)} 自動消費`,
+      body: '標記衝動唔係責備，而係令下一次付款前多出三秒選擇空間。',
+      label: '記下一筆前停一停',
+      action: () => openLogSheet('expense'),
+    };
+  }
+  if (activeDays >= 3) {
+    return {
+      title: `你有 ${activeDays} 日願意面對數字`,
+      body: `本週已記 ${fmt(total)}。持續看見，比追求一份完美預算更有用。`,
+      label: '查看本週節奏',
+      action: () => switchScreen('stats'),
+    };
+  }
+  const cat = CATS.find((item) => item.id === top[0]);
+  return {
+    title: `最大章節係${cat.name} ${fmt(top[1])}`,
+    body: '先看最大一類已經夠。下一筆補上消費故事，你會更清楚呢啲錢換返咗甚麼。',
+    label: '為下一筆加故事',
+    action: () => openLogSheet('expense'),
   };
 }
 
@@ -684,20 +840,30 @@ function renderHome() {
   $('hero-img').classList.toggle('cape', S.items.cape > 0);
   // 今日 HP
   const spent = daySpend(todayKey());
-  const left = Math.max(0, dailyBudget() - spent);
-  const pct = Math.max(0, Math.min(100, (left / dailyBudget()) * 100));
+  const pace = safeToSpendToday();
+  const rawLeft = pace.safe - spent;
+  const left = Math.max(0, rawLeft);
+  const pct = pace.safe > 0 ? Math.max(0, Math.min(100, (left / pace.safe) * 100)) : 0;
   const fill = $('hero-hpfill');
   fill.style.width = pct + '%';
   fill.classList.toggle('ok', pct > 40);
-  $('hero-hptext').textContent = `${fmt(left)} / ${fmt(dailyBudget())}`;
-  $('hero-sub').textContent = spent > dailyBudget()
-    ? `今日超支 ${fmt(spent - dailyBudget())}，聽日反擊！`
-    : (dayActive(todayKey()) ? `今日仲有 ${fmt(left)} 彈藥，慳得愈多斬魔王愈痛` : '今日未記帳，記低第一筆有必爆寶箱');
+  $('hero-hptext').textContent = `${fmt(left)} / ${fmt(pace.safe)}`;
+  const paceShift = pace.safe - pace.base;
+  const paceNote = !pace.calibrated
+    ? '先用固定日平均，累積一個完整記錄日後開始校準'
+    : paceShift < 0
+    ? `按本月餘額，今日比固定平均收細 ${fmt(Math.abs(paceShift))}`
+    : paceShift > 0
+      ? `本月尚有空間，今日比固定平均多 ${fmt(paceShift)}`
+      : `按本月剩餘 ${pace.daysLeft} 日平均分配`;
+  $('hero-sub').textContent = rawLeft < 0
+    ? `今日比安心額度多 ${fmt(Math.abs(rawLeft))}；唔使補償，下一筆重新選擇。${paceNote}`
+    : (dayActive(todayKey()) ? `今日仲有 ${fmt(left)} 可以安心使用。${paceNote}` : `今日未記帳。可安心使用 ${fmt(pace.safe)}，第一筆有必爆寶箱。${paceNote}`);
   $('budget-status').textContent = !dayActive(todayKey())
     ? '等待第一步'
-    : (spent > dailyBudget() ? '需要休整' : (pct > 40 ? '步調輕鬆' : '留意能量'));
-  $('hero-mood').textContent = spent > dailyBudget()
-    ? '準備反擊'
+    : (rawLeft < 0 ? '已經看見' : (pct > 40 ? '步調輕鬆' : '慢慢使用'));
+  $('hero-mood').textContent = rawLeft < 0
+    ? '仍然同行'
     : (dayActive(todayKey()) ? '節奏穩定' : '準備出發');
   // 魔王
   const dmg = bossDamage(), max = bossMaxHp();
@@ -720,6 +886,12 @@ function renderHome() {
   $('objective-main').innerHTML = obj.body;
   $('objective-action').textContent = obj.label;
   $('objective-action').onclick = obj.action;
+  // 每週只留一個洞察同一個下一步
+  const reflection = buildWeeklyReflection();
+  $('reflection-title').textContent = reflection.title;
+  $('reflection-main').textContent = reflection.body;
+  $('reflection-action').textContent = reflection.label;
+  $('reflection-action').onclick = reflection.action;
   // 護甲
   const ai = armorInfo();
   $('armor-line').innerHTML = S.finProfile
@@ -840,7 +1012,7 @@ function renderStats() {
   const recent = [...S.expenses].sort((a, b) => b.ts - a.ts).slice(0, 10);
   $('recent-logs').innerHTML = recent.length
     ? recent.map((e) => `<div class="log-row">
-        <div><span class="lr-cat">${CATS.find((c) => c.id === e.cat).name}</span><span class="lr-date">${e.dateKey.slice(5)}</span></div>
+        <div><span class="lr-cat">${CATS.find((c) => c.id === e.cat).name}</span><span class="lr-date">${e.dateKey.slice(5)}</span>${e.intent ? `<span class="intent-tag">${INTENTS.find((item) => item.id === e.intent).name}</span>` : ''}</div>
         <div><span class="lr-amt">-${fmt(e.amount)}</span> <button class="btn small ghost" data-del="${e.id}" style="padding:4px 10px;margin-left:6px">刪</button></div>
       </div>`).join('')
     : '<p class="tip">未有紀錄，去記低第一筆啦。</p>';
@@ -940,7 +1112,8 @@ function initOnboard() {
     $('onboard-mask').classList.add('hidden');
     renderAll();
     const dragons = liveDebts().length;
-    popup(firstTime ? '冒險開始！' : '檔案已更新！', `<p style="color:var(--dim);font-size:13px;line-height:1.7">你嘅每日預算係 <b style="color:var(--gold)">${fmt(dailyBudget())}</b>（角色 HP）。<br>護甲：${armorInfo().name}${dragons ? `<br>惡龍：${dragons} 條 — 軍師已經幫你排好雪球攻擊次序` : ''}<br>而家記低今日第一筆支出，有必爆寶箱！</p>`);
+    const pace = safeToSpendToday();
+    popup(firstTime ? '冒險開始！' : '檔案已更新！', `<p style="color:var(--dim);font-size:13px;line-height:1.7">今日可安心使用係 <b style="color:var(--gold)">${fmt(pace.safe)}</b>；累積一個完整記錄日後，會按本月剩餘預算同日數每日調整。<br>護甲：${armorInfo().name}${dragons ? `<br>惡龍：${dragons} 條 — 軍師已經幫你排好雪球攻擊次序` : ''}<br>而家記低今日第一筆支出，有必爆寶箱！</p>`);
   };
 
   openFinWizard = () => {
