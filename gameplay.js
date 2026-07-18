@@ -132,8 +132,68 @@
     };
   }
 
+  function installmentQuote(principal, annualRate, months) {
+    const amount = Math.max(0, Number(principal) || 0);
+    const term = Math.max(1, Math.round(Number(months) || 1));
+    const monthlyRate = Math.max(0, Number(annualRate) || 0) / 1200;
+    const payment = monthlyRate > 0
+      ? amount * monthlyRate / (1 - Math.pow(1 + monthlyRate, -term))
+      : amount / term;
+    const monthlyPayment = Math.round((payment + Number.EPSILON) * 100) / 100;
+    const totalCost = Math.round((monthlyPayment * term + Number.EPSILON) * 100) / 100;
+    return {
+      monthlyPayment,
+      totalCost,
+      financeCost: Math.max(0, Math.round(((totalCost - amount) + Number.EPSILON) * 100) / 100),
+    };
+  }
+
+  function purchaseEncounter(input) {
+    const source = ['daily', 'savings', 'credit'].includes(input && input.source) ? input.source : 'daily';
+    const intent = ['need', 'joy', 'unsure'].includes(input && input.intent) ? input.intent : 'unsure';
+    const amount = Math.max(0, Number(input && input.amount) || 0);
+    const safeToday = Math.max(0, Number(input && input.safeToday) || 0);
+    const savings = Math.max(0, Number(input && input.savings) || 0);
+    const monthlyBudget = Math.max(1, Number(input && input.monthlyBudget) || 1);
+    const income = Math.max(0, Number(input && input.income) || 0);
+    const goalRemaining = Math.max(0, Number(input && input.goalRemaining) || 0);
+    const goalWeeklySuggested = Math.max(0, Number(input && input.goalWeeklySuggested) || 0);
+    const financed = source === 'credit' && input && input.repayment === 'installment';
+    const quote = financed
+      ? installmentQuote(amount, input.annualRate, input.installmentMonths)
+      : { monthlyPayment: 0, totalCost: amount, financeCost: 0 };
+    const dailyImpact = source === 'daily' || (source === 'credit' && !financed) ? amount : 0;
+    const dailyAfter = safeToday - dailyImpact;
+    const savingsAfter = source === 'savings' ? savings - amount : savings;
+    const armorBefore = savings / monthlyBudget;
+    const armorAfter = Math.max(0, savingsAfter) / monthlyBudget;
+    const monthlyBurdenPct = financed && income > 0 ? quote.monthlyPayment / income * 100 : null;
+    const goalEquivalentWeeks = goalWeeklySuggested > 0 ? amount / goalWeeklySuggested : null;
+    const goalEquivalentPct = goalRemaining > 0 ? amount / goalRemaining * 100 : null;
+    const hardFlags = [
+      dailyAfter < 0,
+      source === 'savings' && savingsAfter < 0,
+      financed && Number(input.annualRate || 0) >= 25,
+      financed && monthlyBurdenPct != null && monthlyBurdenPct > 10,
+    ];
+    const pauseFlags = [
+      intent === 'unsure',
+      dailyImpact > 0 && safeToday > 0 && dailyAfter < safeToday * 0.25,
+      source === 'savings' && armorAfter < 1,
+      financed,
+    ];
+    const signal = hardFlags.some(Boolean) ? 'arrange' : pauseFlags.some(Boolean) ? 'pause' : 'clear';
+    return {
+      amount, source, intent, financed, signal, safeToday, dailyImpact, dailyAfter,
+      savings, savingsAfter, armorBefore, armorAfter, monthlyPayment: quote.monthlyPayment,
+      totalCost: quote.totalCost, financeCost: quote.financeCost, monthlyBurdenPct,
+      goalRemaining, goalEquivalentWeeks, goalEquivalentPct,
+    };
+  }
+
   return {
     WEEKLY_QUESTS, CHAPTERS, GOAL_TYPES, chapterFor, weeklyQuestProgress, routeModel,
     expeditionComplete, expeditionTargetDays, goalSaved, goalProgress, goalPace,
+    installmentQuote, purchaseEncounter,
   };
 });

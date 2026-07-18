@@ -12,6 +12,8 @@ const {
   goalSaved,
   goalProgress,
   goalPace,
+  installmentQuote,
+  purchaseEncounter,
 } = require('../gameplay.js');
 
 test('advances chapters without resetting cumulative days', () => {
@@ -80,4 +82,31 @@ test('suggests a neutral weekly pace when a goal has a deadline', () => {
   );
   assert.equal(pace.daysLeft, 29);
   assert.equal(pace.weeklySuggested, 160);
+});
+
+test('shows when a daily purchase needs a funding plan', () => {
+  const result = purchaseEncounter({ amount: 700, source: 'daily', intent: 'joy', safeToday: 500, savings: 10000, monthlyBudget: 8000 });
+  assert.equal(result.dailyAfter, -200);
+  assert.equal(result.signal, 'arrange');
+});
+
+test('shows the armor change without treating savings as free money', () => {
+  const result = purchaseEncounter({ amount: 3000, source: 'savings', intent: 'need', safeToday: 500, savings: 5000, monthlyBudget: 4000 });
+  assert.equal(result.savingsAfter, 2000);
+  assert.equal(result.armorAfter, 0.5);
+  assert.equal(result.signal, 'pause');
+});
+
+test('quotes a zero-interest installment exactly', () => {
+  assert.deepEqual(installmentQuote(1200, 0, 12), { monthlyPayment: 100, totalCost: 1200, financeCost: 0 });
+});
+
+test('surfaces high-interest financing cost and monthly burden', () => {
+  const result = purchaseEncounter({
+    amount: 12000, source: 'credit', repayment: 'installment', installmentMonths: 12,
+    annualRate: 30, intent: 'joy', safeToday: 500, savings: 10000, monthlyBudget: 8000, income: 10000,
+  });
+  assert.ok(result.financeCost > 1900);
+  assert.ok(result.monthlyBurdenPct > 11);
+  assert.equal(result.signal, 'arrange');
 });

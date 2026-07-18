@@ -52,6 +52,7 @@ const defaults = () => ({
   goalContributions: [],   // {id, goalId, amount, source:'new_saving'|'allocated', dateKey, ts}
   goalRewardWeeks: {},     // weekKey -> rewarded goal id
   activeGoalId: null,
+  decisionEncounters: [],  // {id, name, amount, source, intent, status, revisitAt, createdAt}
   gold: 0, xp: 0, level: 1,
   streak: 0, lastLogDate: null, // streak 保留舊欄位名，現代表累積同行日
   items: { sword: 0, charm: 0, shield: 0, cape: 0 },
@@ -75,6 +76,7 @@ function load() {
       state.goals = Array.isArray(state.goals) ? state.goals : [];
       state.goalContributions = Array.isArray(state.goalContributions) ? state.goalContributions : [];
       state.goalRewardWeeks = state.goalRewardWeeks && typeof state.goalRewardWeeks === 'object' ? state.goalRewardWeeks : {};
+      state.decisionEncounters = Array.isArray(state.decisionEncounters) ? state.decisionEncounters : [];
       return state;
     }
   } catch (e) {}
@@ -246,6 +248,7 @@ const I = {
   swords: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 4l10 10M4 4v4M4 4h4M20 4L10 14M20 4v4M20 4h-4M7 17l-2 2M17 17l2 2M6 14l4 4M18 14l-4 4"/></svg>`,
   scroll: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 4h11a2 2 0 012 2v12a2 2 0 01-2 2H8a2 2 0 01-2-2V4z"/><path d="M6 4a2 2 0 00-2 2v2h4"/><path d="M10 9h6M10 13h6M10 17h4"/></svg>`,
   plus: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>`,
+  sparkles: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.2 3.8L17 8l-3.8 1.2L12 13l-1.2-3.8L7 8l3.8-1.2L12 3zM5 15l.8 2.2L8 18l-2.2.8L5 21l-.8-2.2L2 18l2.2-.8L5 15zM19 13l.7 2.3L22 16l-2.3.7L19 19l-.7-2.3L16 16l2.3-.7L19 13z"/></svg>`,
   bag: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 8h14l-1 12a2 2 0 01-2 2H8a2 2 0 01-2-2L5 8z"/><path d="M8 8V6a4 4 0 018 0v2"/></svg>`,
   chart: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 20V10M10 20V4M16 20v-8M20 20H4"/></svg>`,
   food: `<svg viewBox="0 0 24 24" fill="none" stroke="#ffc93c" stroke-width="2" stroke-linecap="round"><path d="M4 11h16a8 8 0 01-16 0z" fill="#3a2b6b"/><path d="M8 8c0-1 .5-2 .5-2M12 8c0-1 .5-2 .5-2M16 8c0-1 .5-2 .5-2"/></svg>`,
@@ -428,6 +431,7 @@ function renderSceneDialogue(force) {
   const returning = S.lastLogDate && S.lastLogDate < yesterdayKey();
   const dead = bossDamage() >= bossMaxHp();
   const period = periodInfo();
+  const pendingDecision = dueDecision();
   const key = [todayKey(), S.heroName, pace.safe, bossMaxHp(), spent, logsToday(), bossDamage(), S.boss.claimed, S.lastLogDate, objective.label].join('|');
   if (!force && activeDialogueKey === key && homeReminder) return;
   activeDialogueKey = key;
@@ -435,6 +439,8 @@ function renderSceneDialogue(force) {
   let text;
   if (dead && !S.boss.claimed) {
     text = `${S.heroName}，你做到了！慾望魔王已經倒下，今週每一次克制都冇白費。先收好獎勵啦。`;
+  } else if (pendingDecision) {
+    text = `${S.heroName}，「${pendingDecision.name}」已經喺卷軸入面休息咗 24 小時。依家再望一次數字同感受，答案可能比昨日清楚。`;
   } else if (!active && returning) {
     text = `${period.greeting}，${S.heroName}，歡迎返嚟。唔使補晒之前日子，過去努力亦冇消失；今日記一筆，就可以由而家重新開始。`;
   } else if (!active) {
@@ -595,10 +601,10 @@ function openChest() {
 }
 
 /* ===================== 記帳 / 還債 sheet ===================== */
-let selCat = null, amtStr = '0', sheetMode = 'expense', sheetBudgetImpact = 'daily';
-function openLogSheet(mode) {
+let selCat = null, amtStr = '0', sheetMode = 'expense', sheetBudgetImpact = 'daily', sheetRecordOptions = {};
+function openLogSheet(mode, preset) {
   sheetMode = mode || 'expense';
-  selCat = null; amtStr = '0'; sheetBudgetImpact = 'daily';
+  selCat = null; amtStr = '0'; sheetBudgetImpact = 'daily'; sheetRecordOptions = {};
   $('log-step-title').textContent = sheetMode === 'repay' ? '還俾邊條惡龍？' : '今日使咗喺邊度？';
   $('log-guide').textContent = sheetMode === 'repay'
     ? '揀一條債務惡龍。我建議先集中火力打最細嗰條。'
@@ -609,6 +615,26 @@ function openLogSheet(mode) {
   renderCats();
   renderQuickLogs();
   $('log-mask').classList.remove('hidden');
+  if (sheetMode === 'expense' && preset && CATS.some((category) => category.id === preset.category) && Number(preset.amount) > 0) {
+    selCat = preset.category;
+    amtStr = String(Number(preset.amount));
+    sheetRecordOptions = {
+      merchant: preset.merchant || null,
+      cardId: preset.cardId || null,
+      intent: preset.intent || null,
+      source: preset.source || 'manual',
+      decisionId: preset.decisionId || null,
+    };
+    const category = CATS.find((item) => item.id === selCat);
+    $('log-step-title').textContent = `${category.name} — 確認呢筆支出`;
+    $('log-guide').textContent = `軍師已經帶入 ${fmt(preset.amount)}；你仍然可以改金額同預算分類，確認後先會寫入手帳。`;
+    $('log-quick').classList.add('hidden');
+    $('log-cats').classList.add('hidden');
+    $('log-amount').classList.remove('hidden');
+    $('log-budget-impact').classList.remove('hidden');
+    setSheetBudgetImpact(preset.budgetImpact);
+    renderAmt();
+  }
 }
 function closeLogSheet() { $('log-mask').classList.add('hidden'); }
 function renderQuickLogs() {
@@ -741,7 +767,7 @@ function logExpense(cid, amount, opts) {
       pendingChestTimer = setTimeout(() => maybeChest(first), 450);
     }
   }
-  return true;
+  return entryId;
 }
 function saveSheet() {
   const amount = Number(amtStr);
@@ -751,7 +777,19 @@ function saveSheet() {
     repayDebt(Number(selCat), amount);
   } else {
     closeLogSheet();
-    if (logExpense(selCat, amount, { budgetImpact: sheetBudgetImpact })) switchScreen('home');
+    const expenseId = logExpense(selCat, amount, { ...sheetRecordOptions, budgetImpact: sheetBudgetImpact });
+    if (expenseId) {
+      if (sheetRecordOptions.decisionId) {
+        const decision = (S.decisionEncounters || []).find((entry) => entry.id === sheetRecordOptions.decisionId);
+        if (decision) {
+          decision.status = 'recorded';
+          decision.expenseId = expenseId;
+          decision.recordedAt = Date.now();
+          save(); renderAll();
+        }
+      }
+      switchScreen('home');
+    }
   }
 }
 
@@ -990,6 +1028,7 @@ function buildObjective() {
   const goal = activeGoal();
   const affordable = SHOP.find((it) => S.gold >= it.cost && !(it.once && S.items[it.id] > 0));
   const todayMeta = meta(t);
+  const pendingDecision = dueDecision();
   const untaggedExpense = [...S.expenses].reverse().find((item) => item.dateKey === t && expenseBudgetImpact(item) === 'daily' && !item.intent);
   const claimableQuest = QUESTS.find((q) => questProgress(q) >= q.target && !todayMeta.questsClaimed.includes(q.id));
 
@@ -999,6 +1038,14 @@ function buildObjective() {
       body: '本週魔王已經倒地。領咗勝利獎勵，再將金幣拎去商店升裝。',
       label: '領取魔王獎勵',
       action: claimBoss,
+    };
+  }
+  if (pendingDecision) {
+    return {
+      reward: '自主選擇',
+      body: `<b>${escapeHtml(pendingDecision.name)}</b> 已經封存滿 24 小時。重新推演一次，再決定準備記帳或者放下。`,
+      label: '回看消費遭遇',
+      action: () => openDecisionEncounter(pendingDecision.id),
     };
   }
   if (!dayHasMoneyActivity(t)) {
@@ -1121,6 +1168,262 @@ function buildWeeklyReflection() {
     label: '為下一筆加故事',
     action: () => openLogSheet('expense'),
   };
+}
+
+/* ===================== 消費決策遭遇 ===================== */
+let selectedDecisionSource = 'daily';
+let selectedDecisionIntent = 'unsure';
+let selectedDecisionRepayment = 'full';
+let activeDecisionId = null;
+let activeDecisionResult = null;
+let decisionReminderTimer = null;
+
+function dueDecision() {
+  return (S.decisionEncounters || [])
+    .filter((entry) => entry.status === 'waiting' && Number(entry.revisitAt || 0) <= Date.now())
+    .sort((a, b) => Number(a.revisitAt || 0) - Number(b.revisitAt || 0))[0] || null;
+}
+
+function scheduleDecisionReminder() {
+  clearTimeout(decisionReminderTimer);
+  decisionReminderTimer = null;
+  const next = (S.decisionEncounters || [])
+    .filter((entry) => entry.status === 'waiting' && Number(entry.revisitAt || 0) > Date.now())
+    .sort((a, b) => Number(a.revisitAt) - Number(b.revisitAt))[0];
+  if (!next) return;
+  decisionReminderTimer = setTimeout(() => {
+    renderAll();
+    if (activeScreenName === 'home' && $('dialogue-panel').classList.contains('hidden')) renderSceneDialogue(true);
+  }, Math.min(2147483647, Math.max(250, Number(next.revisitAt) - Date.now())));
+}
+
+function decisionGoalContext() {
+  const incomplete = (S.goals || []).filter((goal) => !FinanceGameplay.goalProgress(goal, S.goalContributions).complete);
+  const goal = incomplete.find((item) => item.id === S.activeGoalId) || incomplete[incomplete.length - 1] || null;
+  if (!goal) return { goal: null, progress: null, pace: null };
+  return {
+    goal,
+    progress: FinanceGameplay.goalProgress(goal, S.goalContributions),
+    pace: FinanceGameplay.goalPace(goal, S.goalContributions, todayKey()),
+  };
+}
+
+function setDecisionSegment(attribute, value) {
+  const buttons = document.querySelectorAll(`[data-${attribute}]`);
+  buttons.forEach((button) => {
+    const active = button.dataset[attribute.replace(/-([a-z])/g, (_, letter) => letter.toUpperCase())] === value;
+    button.classList.toggle('active', active);
+    button.setAttribute('aria-pressed', String(active));
+  });
+}
+
+function setDecisionSource(value) {
+  if (!['daily', 'savings', 'credit'].includes(value)) return;
+  selectedDecisionSource = value;
+  if (value !== 'credit' && selectedDecisionRepayment === 'installment') selectedDecisionRepayment = 'full';
+  setDecisionSegment('decision-source', value);
+  $('decision-credit').classList.toggle('hidden', value !== 'credit');
+  setDecisionRepayment(selectedDecisionRepayment);
+}
+
+function setDecisionIntent(value) {
+  if (!['need', 'joy', 'unsure'].includes(value)) return;
+  selectedDecisionIntent = value;
+  setDecisionSegment('decision-intent', value);
+}
+
+function setDecisionRepayment(value) {
+  if (!['full', 'installment'].includes(value)) return;
+  selectedDecisionRepayment = value;
+  setDecisionSegment('decision-repayment', value);
+  const financed = value === 'installment' && selectedDecisionSource === 'credit';
+  $('decision-finance').classList.toggle('hidden', !financed);
+  $('decision-months').required = financed;
+  $('decision-apr').required = financed;
+}
+
+function populateDecisionCards(selectedId) {
+  const cards = S.creditCards || [];
+  $('decision-card').innerHTML = cards.length
+    ? cards.map((card) => `<option value="${escapeHtml(card.id)}">${escapeHtml(card.name)}${card.last4 ? ` •••• ${escapeHtml(card.last4)}` : ''}</option>`).join('')
+    : '<option value="">未設定信用卡</option>';
+  if (selectedId && cards.some((card) => card.id === selectedId)) $('decision-card').value = selectedId;
+  const card = cards.find((item) => item.id === $('decision-card').value);
+  if (card && card.annualRate != null) $('decision-apr').value = card.annualRate;
+}
+
+function closeDecisionEncounter() { $('decision-mask').classList.add('hidden'); }
+
+function decisionInput() {
+  const amount = Number($('decision-amount').value);
+  const card = (S.creditCards || []).find((item) => item.id === $('decision-card').value) || null;
+  const goalContext = decisionGoalContext();
+  const pace = safeToSpendToday();
+  return {
+    name: $('decision-name').value.trim().slice(0, 36) || '呢次消費',
+    amount,
+    category: $('decision-category').value,
+    source: selectedDecisionSource,
+    intent: selectedDecisionIntent,
+    repayment: selectedDecisionRepayment,
+    cardId: card ? card.id : null,
+    cardName: card ? card.name : null,
+    installmentMonths: Number($('decision-months').value || 12),
+    annualRate: Number($('decision-apr').value || 0),
+    safeToday: Math.max(0, pace.safe - daySpend(todayKey())),
+    savings: Number((S.finProfile && S.finProfile.savings) || 0),
+    monthlyBudget: S.monthlyBudget,
+    income: Number((S.finProfile && S.finProfile.income) || 0),
+    goalId: goalContext.goal ? goalContext.goal.id : null,
+    goalName: goalContext.goal ? goalContext.goal.name : null,
+    goalRemaining: goalContext.progress ? goalContext.progress.remaining : 0,
+    goalWeeklySuggested: goalContext.pace ? goalContext.pace.weeklySuggested : 0,
+  };
+}
+
+function decisionSignalCopy(signal) {
+  if (signal === 'arrange') return { label: '先安排路線', tone: 'arrange', copy: '呢條路會穿過至少一個財務界線。唔代表唔可以買，但先改金額、日期或付款方式，會令之後嘅自己更容易接住。' };
+  if (signal === 'pause') return { label: '留一晚再望', tone: 'pause', copy: '數字未必危險，但仍有一個重要取捨。暫停唔係拒絕享受，而係確認聽日仍然覺得值得。' };
+  return { label: '路線有空間', tone: 'clear', copy: '按目前已記資料，買完仍保留一定空間。你可以放心選擇，亦可以繼續比較，兩邊都唔會扣分。' };
+}
+
+function renderDecisionResult(input, result) {
+  activeDecisionResult = { input, result };
+  const signal = decisionSignalCopy(result.signal);
+  const dailyCopy = result.dailyImpact > 0
+    ? result.dailyAfter >= 0 ? `${fmt(result.dailyAfter)} 尚餘` : `超出 ${fmt(Math.abs(result.dailyAfter))}`
+    : '不直接扣今日';
+  const armorCopy = input.source === 'savings'
+    ? `${result.armorBefore.toFixed(1)} → ${result.armorAfter.toFixed(1)} 個月`
+    : `${result.armorBefore.toFixed(1)} 個月不變`;
+  let goalCopy = '未有進行中願望';
+  if (input.goalName && result.goalEquivalentWeeks != null) goalCopy = `${escapeHtml(input.goalName)} 約 ${result.goalEquivalentWeeks.toFixed(1)} 週補給`;
+  else if (input.goalName && result.goalEquivalentPct != null) goalCopy = `${escapeHtml(input.goalName)} 尚餘額嘅 ${Math.round(result.goalEquivalentPct)}%`;
+  const creditCopy = input.source !== 'credit'
+    ? '今次不使用信用卡'
+    : result.financed
+      ? `${input.installmentMonths} 期 × ${fmt(result.monthlyPayment)} · 成本 ${fmt(result.financeCost)}`
+      : `${escapeHtml(input.cardName || '信用卡')} · 全數還清則預計 $0 利息`;
+  $('decision-form').classList.add('hidden');
+  $('decision-result').innerHTML = `<div class="decision-result-head ${signal.tone}">
+      <span>${signal.label}</span><button class="icon-btn" id="decision-edit" type="button" aria-label="修改推演資料" title="修改"><span class="icon" data-icon="edit"></span></button>
+      <h3>${escapeHtml(input.name)} · ${fmt(input.amount)}</h3>
+      <div class="decision-signal" aria-label="決策訊號 ${signal.label}"><i></i><i></i><i></i><b></b></div>
+    </div>
+    <div class="decision-impact-list">
+      <div><span>今日步速</span><b>${dailyCopy}</b></div>
+      <div><span>應急護甲</span><b>${armorCopy}</b></div>
+      <div><span>願望對照</span><b>${goalCopy}</b></div>
+      <div><span>信用成本</span><b>${creditCopy}</b></div>
+    </div>
+    <div class="decision-advice"><img class="art" data-art="strategist" alt="錢錢軍師"><p>${signal.copy}</p></div>
+    <p class="decision-caveat">推演只用目前已記資料，未包括未輸入嘅固定承諾；係決策提示，不係產品或投資建議。</p>
+    <div class="decision-actions">
+      <button class="btn primary" id="decision-record" type="button">確認路線，準備記帳</button>
+      <button class="btn ghost" id="decision-wait" type="button">封存 24 小時</button>
+      <button class="decision-pass" id="decision-pass" type="button">今次放下</button>
+    </div>`;
+  $('decision-result').classList.remove('hidden');
+  initArt($('decision-result')); initIcons($('decision-result'));
+  $('decision-edit').onclick = () => { $('decision-result').classList.add('hidden'); $('decision-form').classList.remove('hidden'); };
+  $('decision-wait').onclick = waitDecisionEncounter;
+  $('decision-pass').onclick = () => resolveDecisionEncounter('passed');
+  $('decision-record').onclick = () => resolveDecisionEncounter('ready');
+}
+
+function previewDecisionEncounter(event) {
+  if (event) event.preventDefault();
+  if (!$('decision-form').checkValidity()) { $('decision-form').reportValidity(); return; }
+  const input = decisionInput();
+  if (!(input.amount > 0)) { toast('請輸入今次金額'); return; }
+  renderDecisionResult(input, FinanceGameplay.purchaseEncounter(input));
+}
+
+function openDecisionEncounter(decisionId) {
+  if (window.FinanceAdvisor) FinanceAdvisor.close();
+  const existing = (S.decisionEncounters || []).find((entry) => entry.id === decisionId) || null;
+  activeDecisionId = existing ? existing.id : null;
+  activeDecisionResult = null;
+  $('decision-name').value = existing ? existing.name : '';
+  $('decision-amount').value = existing ? existing.amount : '';
+  $('decision-category').value = existing ? existing.category : 'shopping';
+  $('decision-months').value = existing ? existing.installmentMonths || 12 : 12;
+  $('decision-apr').value = existing && existing.annualRate != null ? existing.annualRate : '';
+  populateDecisionCards(existing && existing.cardId);
+  setDecisionIntent(existing ? existing.intent : 'unsure');
+  setDecisionRepayment(existing ? existing.repayment : 'full');
+  setDecisionSource(existing ? existing.source : 'daily');
+  $('decision-result').classList.add('hidden');
+  $('decision-form').classList.remove('hidden');
+  $('decision-mask').classList.remove('hidden');
+  if (existing) previewDecisionEncounter();
+}
+
+function persistDecision(status) {
+  const input = activeDecisionResult ? activeDecisionResult.input : decisionInput();
+  let entry = (S.decisionEncounters || []).find((item) => item.id === activeDecisionId) || null;
+  if (!entry) {
+    entry = { id: `decision-${Date.now()}-${Math.floor(Math.random() * 10000)}`, createdAt: Date.now() };
+    S.decisionEncounters.push(entry);
+    activeDecisionId = entry.id;
+  }
+  Object.assign(entry, input, { status, updatedAt: Date.now() });
+  return entry;
+}
+
+function rewardDecisionReflection() {
+  const todayMeta = meta(todayKey());
+  if (todayMeta.decisionReflectionRewarded) return 0;
+  todayMeta.decisionReflectionRewarded = true;
+  gainXp(15);
+  return 15;
+}
+
+function waitDecisionEncounter() {
+  const entry = persistDecision('waiting');
+  entry.revisitAt = Date.now() + 24 * 60 * 60 * 1000;
+  save(); closeDecisionEncounter(); renderAll(); switchScreen('home');
+  activeDialogueKey = `decision-wait-${entry.id}`;
+  speak('錢錢軍師', `「${entry.name}」卷軸已封存。24 小時後我會喺營地提醒你再望一次；等待期間，願望同進度都唔會扣分。`, [
+    { label: '知道', primary: true, action: closeSceneDialogue },
+  ]);
+}
+
+function resolveDecisionEncounter(status) {
+  const entry = persistDecision(status);
+  entry.resolvedAt = Date.now();
+  entry.revisitAt = null;
+  const xp = rewardDecisionReflection();
+  save(); closeDecisionEncounter(); renderAll();
+  if (status === 'passed') {
+    switchScreen('home');
+    activeDialogueKey = `decision-pass-${entry.id}`;
+    speak('錢錢軍師', `「${entry.name}」今次收起咗。買或者唔買都唔係勝負；你停低望清楚先選，先係真正嘅自主。${xp ? '今日反思 XP +15。' : ''}`, [
+      { label: '返回營地', primary: true, action: closeSceneDialogue },
+    ]);
+    return;
+  }
+  if (entry.source === 'credit' && entry.repayment === 'installment') {
+    const cardCopy = entry.cardName ? `，信用卡係${entry.cardName}` : '';
+    FinanceAdvisor.open(`我想記一個${entry.name}分期，本金${entry.amount}，${entry.installmentMonths}期，APR ${entry.annualRate}%${cardCopy}`);
+    return;
+  }
+  if (entry.source === 'credit' && !entry.cardId) {
+    openCardForm();
+    toast('先補上信用卡資料，再完成記帳');
+    return;
+  }
+  openLogSheet('expense', {
+    category: entry.category,
+    amount: entry.amount,
+    budgetImpact: entry.category === 'bills' ? 'committed' : 'daily',
+    merchant: entry.name,
+    cardId: entry.source === 'credit' ? entry.cardId : null,
+    intent: entry.intent === 'unsure' ? null : entry.intent,
+    source: 'decision',
+    decisionId: entry.id,
+  });
+  if (xp) toast('推演完成 · 今日反思 XP +15');
 }
 
 /* ===================== 商店 ===================== */
@@ -1782,6 +2085,10 @@ function renderStats() {
     ...(S.incomes || []).map((entry) => ({ ...entry, entryType: 'income' })),
     ...(S.cardPayments || []).map((entry) => ({ ...entry, entryType: 'card_payment' })),
     ...(S.goalContributions || []).map((entry) => ({ ...entry, entryType: 'goal_contribution' })),
+    ...(S.decisionEncounters || []).filter((entry) => entry.status !== 'recorded').map((entry) => ({
+      ...entry, entryType: 'decision', ts: entry.updatedAt || entry.createdAt,
+      dateKey: keyOf(new Date(entry.updatedAt || entry.createdAt)),
+    })),
     ...(S.repayments || []).map((entry) => ({ ...entry, dateKey: keyOf(new Date(entry.ts)), entryType: 'debt_payment' })),
   ].sort((a, b) => b.ts - a.ts).slice(0, 10);
   $('recent-logs').innerHTML = recent.length
@@ -1794,6 +2101,11 @@ function renderStats() {
       ? `<div class="log-row">
         <div><span class="lr-cat">${escapeHtml((S.goals.find((goal) => goal.id === entry.goalId) || { name: '願望任務' }).name)}</span><span class="lr-date">${entry.dateKey.slice(5)}</span><span class="intent-tag goal-tag">願望儲蓄</span></div>
         <div class="log-amount"><span class="lr-amt transfer">${fmt(entry.amount)}</span><button class="icon-btn log-delete" data-del-goal-contribution="${entry.id}" aria-label="刪除願望存入紀錄" title="刪除"><span class="icon" data-icon="trash"></span></button></div>
+      </div>`
+      : entry.entryType === 'decision'
+      ? `<div class="log-row decision-log-row">
+        <div><span class="lr-cat">${escapeHtml(entry.name || '消費遭遇')}</span><span class="lr-date">${entry.dateKey.slice(5)}</span><span class="intent-tag decision-tag">${entry.status === 'waiting' ? (Number(entry.revisitAt || 0) <= Date.now() ? '待回看' : '封存中') : entry.status === 'passed' ? '已放下' : '準備記帳'}</span></div>
+        <div class="log-amount"><span class="lr-amt transfer">${fmt(entry.amount)}</span>${entry.status === 'passed' ? '<span class="icon decision-check" data-icon="check"></span>' : `<button class="btn small ghost" data-open-decision="${entry.id}">回看</button>`}</div>
       </div>`
       : entry.entryType === 'card_payment'
       ? `<div class="log-row">
@@ -1813,6 +2125,9 @@ function renderStats() {
   initIcons($('recent-logs'));
   $('recent-logs').querySelectorAll('[data-del-goal-contribution]').forEach((button) => {
     button.onclick = () => removeGoalContribution(button.dataset.delGoalContribution);
+  });
+  $('recent-logs').querySelectorAll('[data-open-decision]').forEach((button) => {
+    button.onclick = () => openDecisionEncounter(button.dataset.openDecision);
   });
   $('recent-logs').querySelectorAll('[data-impact-expense]').forEach((button) => (button.onclick = () => {
     const expense = S.expenses.find((entry) => entry.id === Number(button.dataset.impactExpense));
@@ -2018,6 +2333,7 @@ function saveCardForm(event) {
 function renderAll() {
   renderHud(); renderHome(); renderQuests(); renderShop(); renderStats();
   if (window.FinanceAdvisor) FinanceAdvisor.render(S);
+  scheduleDecisionReminder();
 }
 
 /* ===================== 導覽 ===================== */
@@ -2374,6 +2690,9 @@ function init() {
   document.querySelectorAll('[data-growth-view]').forEach((button) => (button.onclick = () => switchGrowthView(button.dataset.growthView)));
   document.querySelectorAll('[data-goal-type]').forEach((button) => (button.onclick = () => setGoalType(button.dataset.goalType)));
   document.querySelectorAll('[data-goal-funding]').forEach((button) => (button.onclick = () => setGoalFunding(button.dataset.goalFunding)));
+  document.querySelectorAll('[data-decision-source]').forEach((button) => (button.onclick = () => setDecisionSource(button.dataset.decisionSource)));
+  document.querySelectorAll('[data-decision-intent]').forEach((button) => (button.onclick = () => setDecisionIntent(button.dataset.decisionIntent)));
+  document.querySelectorAll('[data-decision-repayment]').forEach((button) => (button.onclick = () => setDecisionRepayment(button.dataset.decisionRepayment)));
   $('tab-log').onclick = () => FinanceAdvisor.open();
   bindLogButton();
   $('home-reminder-button').onclick = openHomeReminder;
@@ -2396,6 +2715,13 @@ function init() {
   $('goal-contribution-close').onclick = closeGoalContribution;
   $('goal-contribution-cancel').onclick = closeGoalContribution;
   $('goal-contribution-mask').onclick = (event) => { if (event.target === $('goal-contribution-mask')) closeGoalContribution(); };
+  $('decision-form').onsubmit = previewDecisionEncounter;
+  $('decision-close').onclick = closeDecisionEncounter;
+  $('decision-mask').onclick = (event) => { if (event.target === $('decision-mask')) closeDecisionEncounter(); };
+  $('decision-card').onchange = () => {
+    const card = (S.creditCards || []).find((item) => item.id === $('decision-card').value);
+    $('decision-apr').value = card && card.annualRate != null ? card.annualRate : '';
+  };
   $('card-form').onsubmit = saveCardForm;
   $('card-form-close').onclick = closeCardForm;
   $('card-form-cancel').onclick = closeCardForm;
@@ -2424,6 +2750,7 @@ function init() {
     today: todayKey,
     month: monthKey,
     initIcons,
+    openDecision: () => openDecisionEncounter(),
     openCardForm,
     openCardPaymentForm,
     speak: (speaker, text) => { switchScreen('home'); speak(speaker, text, sceneChoices(buildObjective())); },

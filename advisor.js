@@ -359,7 +359,7 @@
       return result;
     }
 
-    return emptyResult('我喺度。你可以記支出、收入、信用卡或分期，亦可以直接問我理財問題。');
+    return emptyResult('我喺度。你可以記支出、收入、信用卡或分期，直接問理財問題，亦可以用「買前推演」睇清楚付款路線。');
   }
 
   function normalizeResult(result) {
@@ -684,7 +684,7 @@
 
   function open(prompt) {
     $('advisor-mask').classList.remove('hidden');
-    if (!messages.length) addMessage('assistant', '我喺度。你可以記支出、收入、信用卡或分期，亦可以直接問我理財問題。資料未齊我會逐樣問，任何紀錄都要你確認先會寫入。');
+    if (!messages.length) addMessage('assistant', '我喺度。你可以記支出、收入、信用卡或分期，直接問理財問題，亦可以先推演一筆消費。資料未齊我會逐樣問，任何紀錄都要你確認先會寫入。');
     renderMessages();
     if (prompt) submitMessage(prompt);
     else $('advisor-input').focus();
@@ -856,6 +856,9 @@
     $('advisor-mic').onclick = startVoice;
     document.querySelectorAll('[data-advisor-prompt]').forEach((button) => {
       button.onclick = () => submitMessage(button.dataset.advisorPrompt);
+    });
+    document.querySelectorAll('[data-advisor-action="decision"]').forEach((button) => {
+      button.onclick = () => { close(); bridge.openDecision(); };
     });
     setupVoice();
     if (bridge.initIcons) bridge.initIcons($('advisor-sheet'));

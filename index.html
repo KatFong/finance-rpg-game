@@ -9,7 +9,7 @@
 <title>理財勇者</title>
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="assets/hero.png">
-<link rel="stylesheet" href="style.css?v=31">
+<link rel="stylesheet" href="style.css?v=34">
 </head>
 <body data-screen="home">
 
@@ -373,6 +373,7 @@
       <button data-advisor-prompt="我想記一筆收入">記收入</button>
       <button data-advisor-prompt="我想新增一張信用卡">新增信用卡</button>
       <button data-advisor-prompt="我想問一個理財問題">問理財</button>
+      <button data-advisor-action="decision">買前推演</button>
     </div>
     <div class="advisor-draft hidden" id="advisor-draft"></div>
     <div class="advisor-composer">
@@ -380,6 +381,58 @@
       <textarea id="advisor-input" rows="1" maxlength="1200" placeholder="記帳、記收入，或者問理財問題…"></textarea>
       <button class="icon-btn send-btn" id="advisor-send" aria-label="傳送訊息" title="傳送"><span class="icon" data-icon="send"></span></button>
     </div>
+  </div>
+</div>
+
+<!-- ===== 消費決策遭遇 ===== -->
+<div class="sheet-mask hidden" id="decision-mask">
+  <div class="sheet decision-sheet" id="decision-sheet" role="dialog" aria-labelledby="decision-title">
+    <div class="sheet-handle"></div>
+    <div class="decision-head">
+      <span class="decision-portrait"><img class="art" data-art="strategist" alt="錢錢軍師"></span>
+      <div><span>消費遭遇</span><h3 id="decision-title">付款前，先睇清楚條路</h3></div>
+      <button class="icon-btn" id="decision-close" type="button" aria-label="關閉消費遭遇" title="關閉"><span class="icon" data-icon="close"></span></button>
+    </div>
+    <form id="decision-form">
+      <p class="decision-intro">唔係問准唔准買。軍師只會推演每條付款路線，最後選擇仍然係你。</p>
+      <div class="account-form-grid decision-form-grid">
+        <label class="full"><span>今次想買／處理咩？ <small>選填</small></span><input id="decision-name" maxlength="36" placeholder="例如：新手機、演唱會、家電"></label>
+        <label><span>金額</span><input id="decision-amount" type="number" inputmode="decimal" min="0.01" step="0.01" placeholder="1200" required></label>
+        <label><span>類別</span><select id="decision-category" required><option value="shopping">購物</option><option value="food">餐飲／超市</option><option value="transport">交通</option><option value="fun">娛樂</option><option value="bills">帳單</option><option value="other">其他</option></select></label>
+      </div>
+      <div class="decision-group">
+        <div class="decision-group-head"><b>呢筆對你代表咩？</b><span>冇標準答案</span></div>
+        <div class="decision-segments three" role="group" aria-label="消費意義">
+          <button type="button" data-decision-intent="need" aria-pressed="false">生活需要</button>
+          <button type="button" data-decision-intent="joy" aria-pressed="false">值得享受</button>
+          <button class="active" type="button" data-decision-intent="unsure" aria-pressed="true">未肯定</button>
+        </div>
+      </div>
+      <div class="decision-group">
+        <div class="decision-group-head"><b>打算用邊條付款路線？</b><span>可以返轉頭改</span></div>
+        <div class="decision-segments three" role="group" aria-label="付款來源">
+          <button class="active" type="button" data-decision-source="daily" aria-pressed="true">日常預算</button>
+          <button type="button" data-decision-source="savings" aria-pressed="false">現有存款</button>
+          <button type="button" data-decision-source="credit" aria-pressed="false">信用卡</button>
+        </div>
+      </div>
+      <div class="decision-credit hidden" id="decision-credit">
+        <label><span>信用卡</span><select id="decision-card"></select></label>
+        <div class="decision-group">
+          <div class="decision-group-head"><b>預計點還？</b><span>全數還清先假設零利息</span></div>
+          <div class="decision-segments" role="group" aria-label="信用卡還款方式">
+            <button class="active" type="button" data-decision-repayment="full" aria-pressed="true">下期全數還清</button>
+            <button type="button" data-decision-repayment="installment" aria-pressed="false">分期／融資</button>
+          </div>
+        </div>
+        <div class="decision-finance hidden" id="decision-finance">
+          <label><span>期數</span><input id="decision-months" type="number" inputmode="numeric" min="2" max="60" value="12"></label>
+          <label><span>APR 年利率</span><input id="decision-apr" type="number" inputmode="decimal" min="0" max="100" step="0.01" placeholder="例如 30"></label>
+        </div>
+      </div>
+      <button class="btn primary big decision-cast" type="submit"><span class="icon" data-icon="sparkles"></span>請軍師推演</button>
+    </form>
+    <div class="decision-result hidden" id="decision-result" aria-live="polite"></div>
   </div>
 </div>
 
@@ -522,8 +575,8 @@
 <div id="toast" class="hidden"></div>
 
 <script>window.FRPG_CONFIG = { advisorApiUrl: '' };</script>
-<script src="gameplay.js?v=31"></script>
-<script src="advisor.js?v=31"></script>
-<script src="app.js?v=31"></script>
+<script src="gameplay.js?v=34"></script>
+<script src="advisor.js?v=34"></script>
+<script src="app.js?v=34"></script>
 </body>
 </html>
