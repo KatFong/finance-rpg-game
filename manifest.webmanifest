@@ -1,0 +1,20 @@
+{
+  "name": "理財勇者",
+  "short_name": "理財勇者",
+  "description": "用記帳、儲蓄同還債打怪升級嘅個人理財 RPG。",
+  "lang": "zh-HK",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#171029",
+  "theme_color": "#1a1230",
+  "icons": [
+    {
+      "src": "assets/hero.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
