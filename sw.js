@@ -1,13 +1,13 @@
-const CACHE_NAME = 'finance-rpg-v46';
+const CACHE_NAME = 'finance-rpg-v47';
 const APP_SHELL = [
   './',
   './index.html',
-  './style.css?v=46',
-  './vault.js?v=46',
-  './gameplay.js?v=46',
-  './ledger.js?v=46',
-  './advisor.js?v=46',
-  './app.js?v=46',
+  './style.css?v=47',
+  './vault.js?v=47',
+  './gameplay.js?v=47',
+  './ledger.js?v=47',
+  './advisor.js?v=47',
+  './app.js?v=47',
   './manifest.webmanifest',
   './assets/bg.png',
   './assets/camp-dawn-v2.png',

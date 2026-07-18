@@ -2320,7 +2320,7 @@ function allLedgerEntries() {
         timeLabel: ledgerTimeLabel(entry.ts),
       };
     }),
-  ].sort((a, b) => Number(b.ts || 0) - Number(a.ts || 0) || String(b.dateKey || '').localeCompare(String(a.dateKey || '')));
+  ].sort((a, b) => String(b.dateKey || '').localeCompare(String(a.dateKey || '')) || Number(b.ts || 0) - Number(a.ts || 0));
 }
 
 function historyMonthLabel(value) {
@@ -2345,6 +2345,109 @@ function exportLedgerCsv() {
   link.remove();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
   toast(`已匯出 ${entries.length} 筆足印 · 檔案只喺裝置產生`);
+}
+
+let entryEditBudgetImpact = 'daily';
+
+function setEntryEditImpact(value) {
+  entryEditBudgetImpact = value === 'committed' ? 'committed' : 'daily';
+  document.querySelectorAll('[data-edit-impact]').forEach((button) => {
+    const active = button.dataset.editImpact === entryEditBudgetImpact;
+    button.classList.toggle('active', active);
+    button.setAttribute('aria-pressed', String(active));
+  });
+}
+
+function closeEntryEdit() {
+  $('entry-edit-mask').classList.add('hidden');
+}
+
+function openEntryEdit(kind, entryId) {
+  const expense = kind === 'expense' ? S.expenses.find((entry) => String(entry.id) === String(entryId)) : null;
+  const income = kind === 'income' ? (S.incomes || []).find((entry) => String(entry.id) === String(entryId)) : null;
+  if (expense && ['installment', 'commitment'].includes(expense.source)) {
+    toast('分期同每月承諾要喺原本任務修正');
+    return;
+  }
+  const entry = expense || income;
+  if (!entry) return;
+  $('entry-edit-form').reset();
+  $('entry-edit-kind').value = kind;
+  $('entry-edit-id').value = entry.id;
+  $('entry-edit-title').textContent = kind === 'income' ? '編輯收入' : '編輯支出';
+  $('entry-edit-name-label').textContent = kind === 'income' ? '收入來源' : '商戶／名稱';
+  $('entry-edit-name').placeholder = kind === 'income' ? '例如：薪金、Freelance' : '例如：午餐、超市';
+  $('entry-edit-name').value = kind === 'income' ? (entry.source || '') : (entry.merchant || '');
+  $('entry-edit-amount').value = Number(entry.amount || 0);
+  $('entry-edit-date').value = entry.dateKey || todayKey();
+  $('entry-edit-date').max = todayKey();
+  const expenseOnly = kind === 'expense';
+  $('entry-edit-category-label').classList.toggle('hidden', !expenseOnly);
+  $('entry-edit-card-label').classList.toggle('hidden', !expenseOnly);
+  $('entry-edit-impact').classList.toggle('hidden', !expenseOnly);
+  if (expenseOnly) {
+    $('entry-edit-category').value = CATS.some((item) => item.id === entry.cat) ? entry.cat : 'other';
+    $('entry-edit-card').innerHTML = '<option value="">現金／銀行</option>' + S.creditCards.map((card) => `<option value="${escapeHtml(card.id)}">${escapeHtml(card.name)}${card.last4 ? ` · ${escapeHtml(card.last4)}` : ''}</option>`).join('');
+    $('entry-edit-card').value = S.creditCards.some((card) => card.id === entry.cardId) ? entry.cardId : '';
+    setEntryEditImpact(expenseBudgetImpact(entry));
+    $('entry-edit-note').textContent = '修正會即時重算日常額度同相關卡片差額，但不會再次派發 XP、金幣或寶箱。';
+  } else {
+    $('entry-edit-note').textContent = '修正只會更新收入同收支統計，不會再次派發遊戲獎勵。';
+  }
+  switchScreen('stats');
+  switchStatsView('history');
+  $('entry-edit-mask').classList.remove('hidden');
+  setTimeout(() => (kind === 'income' ? $('entry-edit-name') : $('entry-edit-amount')).focus(), 80);
+}
+
+function saveEntryEdit(event) {
+  event.preventDefault();
+  const kind = $('entry-edit-kind').value;
+  const entryId = $('entry-edit-id').value;
+  const amount = Math.round((Number($('entry-edit-amount').value) + Number.EPSILON) * 100) / 100;
+  const dateKey = $('entry-edit-date').value;
+  const name = $('entry-edit-name').value.trim().slice(0, 40);
+  if (!(amount > 0) || !/^\d{4}-\d{2}-\d{2}$/.test(dateKey) || dateKey > todayKey()) {
+    toast('請檢查金額同日期');
+    return;
+  }
+  if (kind === 'income') {
+    const income = (S.incomes || []).find((entry) => String(entry.id) === entryId);
+    if (!income || !name) { toast('請填寫收入來源'); return; }
+    const oldDate = income.dateKey;
+    Object.assign(income, { source: name, amount, dateKey, updatedAt: Date.now() });
+    invalidateReview(oldDate);
+    if (dateKey !== oldDate) invalidateReview(dateKey);
+    save(); closeEntryEdit(); renderAll();
+    toast('收入足印已修正 · 遊戲獎勵保持不變');
+    return;
+  }
+  const expense = S.expenses.find((entry) => String(entry.id) === entryId);
+  const category = $('entry-edit-category').value;
+  const cardId = S.creditCards.some((card) => card.id === $('entry-edit-card').value) ? $('entry-edit-card').value : null;
+  if (!expense || ['installment', 'commitment'].includes(expense.source) || !CATS.some((item) => item.id === category)) {
+    toast('呢筆足印暫時唔可以喺度修正');
+    return;
+  }
+  const oldDate = expense.dateKey;
+  FinanceLedger.cardBalanceAdjustments(expense, { cardId, amount }).forEach(({ cardId: changedCardId, delta }) => {
+    const card = S.creditCards.find((item) => item.id === changedCardId);
+    if (card) card.currentBalance = Math.max(0, Math.round(((Number(card.currentBalance || 0) + delta) + Number.EPSILON) * 100) / 100);
+  });
+  Object.assign(expense, {
+    merchant: name || null,
+    amount,
+    dateKey,
+    cat: category,
+    cardId,
+    budgetImpact: entryEditBudgetImpact,
+    updatedAt: Date.now(),
+  });
+  if (dateKey === todayKey() && entryEditBudgetImpact === 'daily' && meta(dateKey).noSpend) meta(dateKey).noSpend = false;
+  invalidateReview(oldDate);
+  if (dateKey !== oldDate) invalidateReview(dateKey);
+  save(); closeEntryEdit(); renderAll();
+  toast(`支出足印已修正${cardId ? ' · 卡片差額已同步' : ''} · 獎勵保持不變`);
 }
 
 function switchStatsView(view) {
@@ -2497,7 +2600,7 @@ function renderStats() {
     ? recent.map((entry) => entry.entryType === 'income'
       ? `<div class="log-row">
         <div><span class="lr-cat">${escapeHtml(entry.source || '收入')}</span><span class="lr-date">${entry.dateKey.slice(5)}</span><span class="intent-tag income-tag">收入</span></div>
-        <div class="log-amount"><span class="lr-amt income">+${fmt(entry.amount)}</span><button class="icon-btn log-delete" data-del-income="${escapeHtml(entry.id)}" aria-label="刪除呢筆收入" title="刪除"><span class="icon" data-icon="trash"></span></button></div>
+        <div class="log-amount"><span class="lr-amt income">+${fmt(entry.amount)}</span><button class="icon-btn log-delete impact-edit" data-edit-income="${escapeHtml(entry.id)}" aria-label="編輯呢筆收入" title="編輯收入"><span class="icon" data-icon="edit"></span></button><button class="icon-btn log-delete" data-del-income="${escapeHtml(entry.id)}" aria-label="刪除呢筆收入" title="刪除"><span class="icon" data-icon="trash"></span></button></div>
       </div>`
       : entry.entryType === 'goal_contribution'
       ? `<div class="log-row">
@@ -2521,7 +2624,7 @@ function renderStats() {
       </div>`
       : `<div class="log-row">
         <div><span class="lr-cat">${escapeHtml(entry.merchant || (CATS.find((c) => c.id === entry.cat) || { name: '其他' }).name)}</span><span class="lr-date">${entry.dateKey.slice(5)}</span>${expenseBudgetImpact(entry) === 'committed' ? '<span class="intent-tag committed-tag">固定／預留</span>' : (entry.intent ? `<span class="intent-tag">${(INTENTS.find((item) => item.id === entry.intent) || { name: '消費' }).name}</span>` : '')}</div>
-        <div class="log-amount"><span class="lr-amt">-${fmt(entry.amount)}</span>${['installment', 'commitment'].includes(entry.source) ? '' : `<button class="icon-btn log-delete impact-edit" data-impact-expense="${entry.id}" aria-label="更改呢筆支出嘅預算分類" title="更改預算分類"><span class="icon" data-icon="edit"></span></button>`}<button class="icon-btn log-delete" data-del="${entry.id}" aria-label="刪除呢筆紀錄" title="刪除"><span class="icon" data-icon="trash"></span></button></div>
+        <div class="log-amount"><span class="lr-amt">-${fmt(entry.amount)}</span>${['installment', 'commitment'].includes(entry.source) ? '' : `<button class="icon-btn log-delete impact-edit" data-edit-expense="${entry.id}" aria-label="編輯呢筆支出" title="編輯支出"><span class="icon" data-icon="edit"></span></button>`}<button class="icon-btn log-delete" data-del="${entry.id}" aria-label="刪除呢筆紀錄" title="刪除"><span class="icon" data-icon="trash"></span></button></div>
       </div>`).join('')
     : `<div class="ledger-empty"><b>${allEntries.length ? '搵唔到相符足印' : '仲未有記帳足印'}</b><p>${allEntries.length ? '改一改月份、種類或者搜尋字詞，再翻開圖鑑。' : '第一筆收入、支出或還款會由呢度開始累積。'}</p></div>`;
   initIcons($('recent-logs'));
@@ -2531,22 +2634,12 @@ function renderStats() {
   $('recent-logs').querySelectorAll('[data-open-decision]').forEach((button) => {
     button.onclick = () => openDecisionEncounter(button.dataset.openDecision);
   });
-  $('recent-logs').querySelectorAll('[data-impact-expense]').forEach((button) => (button.onclick = () => {
-    const expense = S.expenses.find((entry) => entry.id === Number(button.dataset.impactExpense));
-    if (!expense) return;
-    const current = expenseBudgetImpact(expense);
-    const next = current === 'daily' ? 'committed' : 'daily';
-    popup('更改預算分類？', `<p class="confirm-copy"><b>${fmt(expense.amount)}</b><br>${next === 'committed' ? '改為固定／預留後，仍會計入總支出，但唔再扣日常安心額。' : '改為日常後，會重新計入當日同本月日常安心額。'}</p>`, {
-      confirmLabel: next === 'committed' ? '改為固定／預留' : '改為日常',
-      cancelLabel: '保持原狀',
-      onConfirm: () => {
-        expense.budgetImpact = next;
-        invalidateReview(expense.dateKey);
-        save(); renderAll();
-        toast(next === 'committed' ? '已改為固定／預留支出' : '已改為日常支出');
-      },
-    });
-  }));
+  $('recent-logs').querySelectorAll('[data-edit-expense]').forEach((button) => {
+    button.onclick = () => openEntryEdit('expense', button.dataset.editExpense);
+  });
+  $('recent-logs').querySelectorAll('[data-edit-income]').forEach((button) => {
+    button.onclick = () => openEntryEdit('income', button.dataset.editIncome);
+  });
   $('recent-logs').querySelectorAll('[data-del]').forEach((b) => (b.onclick = () => {
     const expense = S.expenses.find((entry) => entry.id === Number(b.dataset.del));
     if (!expense) return;
@@ -3225,6 +3318,7 @@ function closeTopOverlay() {
   if (!$('decision-mask').classList.contains('hidden')) { closeDecisionEncounter(); return true; }
   if (!$('vault-mask').classList.contains('hidden')) { closeVault(); return true; }
   if (!$('advisor-mask').classList.contains('hidden')) { FinanceAdvisor.close(); return true; }
+  if (!$('entry-edit-mask').classList.contains('hidden')) { closeEntryEdit(); return true; }
   if (!$('goal-contribution-mask').classList.contains('hidden')) { closeGoalContribution(); return true; }
   if (!$('goal-form-mask').classList.contains('hidden')) { closeGoalForm(); return true; }
   if (!$('commitment-payment-mask').classList.contains('hidden')) { closeCommitmentPayment(); return true; }
@@ -3247,6 +3341,9 @@ function init() {
   $('btn-log-save').onclick = saveSheet;
   document.querySelectorAll('[data-budget-impact]').forEach((button) => {
     button.onclick = () => setSheetBudgetImpact(button.dataset.budgetImpact);
+  });
+  document.querySelectorAll('[data-edit-impact]').forEach((button) => {
+    button.onclick = () => setEntryEditImpact(button.dataset.editImpact);
   });
   // events
   document.querySelectorAll('.tab').forEach((t) => (t.onclick = () => switchScreen(t.dataset.screen)));
@@ -3296,6 +3393,10 @@ function init() {
     ledgerVisibleCount += 25;
     renderStats();
   };
+  $('entry-edit-form').onsubmit = saveEntryEdit;
+  $('entry-edit-close').onclick = closeEntryEdit;
+  $('entry-edit-cancel').onclick = closeEntryEdit;
+  $('entry-edit-mask').onclick = (event) => { if (event.target === $('entry-edit-mask')) closeEntryEdit(); };
   $('btn-commitment-add').onclick = () => openCommitmentForm();
   $('btn-card-add').onclick = () => openCardForm();
   $('btn-vault').onclick = openVault;

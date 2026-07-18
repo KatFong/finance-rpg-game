@@ -40,6 +40,8 @@ python3 -m http.server 3900 --directory /Users/kat/finance-rpg-game
 
 手帳嘅「足印圖鑑」會保留完整歷史，支援名稱／分類／金額搜尋、月份同紀錄種類篩選、逐批載入，以及匯出目前篩選結果做 UTF-8 CSV。CSV 會將收入、實際支出同還款／儲蓄轉移分開，並防止試算表將文字內容當成公式執行；匯出只喺裝置上產生檔案，唔會上傳帳目。
 
+普通支出同收入可以直接喺足印圖鑑用鉛筆修正名稱、金額同日期；支出亦可以改分類、日常／固定預算位置同付款信用卡。修正只會同步真實統計及卡片結欠差額，唔會再派 XP、金幣或寶箱。分期同每月承諾付款仍要由原本任務處理，避免破壞還款排程。
+
 理財戰況對應個人財務健康：日常掌控、應急護甲、目標進度同自主空間；詳細資料集中喺手帳。設計參考 [CFPB Financial Well-Being](https://www.consumerfinance.gov/data-research/research-reports/financial-well-being/)、[Apple Onboarding](https://developer.apple.com/design/human-interface-guidelines/onboarding) 同 [Making finance fun](https://doi.org/10.1108/IJBM-02-2021-0074)；原則係先用真實行動教識玩家、容許休整，並以自主、能力同清晰下一步支持長期動機。
 
 ## 財務問卷 + 資產負債遊戲化

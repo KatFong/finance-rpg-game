@@ -613,6 +613,8 @@ body[data-period="night"] .scene-sky {
 .payment-balance b { color: var(--ink); font-size: 17px; }
 .payment-form-grid { padding-bottom: 8px; }
 .form-note { margin: 0 2px 13px; color: var(--dim); font-size: 10px; line-height: 1.5; }
+.entry-edit-grid { padding-bottom: 10px; }
+.entry-edit-impact { margin-inline: 2px; }
 
 .quick-log { margin: -3px 0 13px; padding-bottom: 12px; border-bottom: 1px solid var(--line); }
 .quick-log-head { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 7px; }

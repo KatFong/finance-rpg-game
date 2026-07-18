@@ -51,6 +51,25 @@
       .sort((a, b) => b.localeCompare(a));
   }
 
+  function cardBalanceAdjustments(before, after) {
+    const previous = before || {};
+    const next = after || {};
+    const oldCardId = previous.cardId || null;
+    const newCardId = next.cardId || null;
+    const oldAmount = Math.max(0, Number(previous.amount) || 0);
+    const newAmount = Math.max(0, Number(next.amount) || 0);
+    const adjustments = {};
+    if (oldCardId && oldCardId === newCardId) {
+      adjustments[oldCardId] = roundMoney(newAmount - oldAmount);
+    } else {
+      if (oldCardId) adjustments[oldCardId] = roundMoney(-oldAmount);
+      if (newCardId) adjustments[newCardId] = roundMoney((adjustments[newCardId] || 0) + newAmount);
+    }
+    return Object.entries(adjustments)
+      .filter(([, delta]) => delta !== 0)
+      .map(([cardId, delta]) => ({ cardId, delta }));
+  }
+
   function csvCell(value) {
     if (typeof value === 'number' && Number.isFinite(value)) return String(value);
     let text = String(value == null ? '' : value);
@@ -72,5 +91,5 @@
     return `\uFEFF${rows.join('\r\n')}\r\n`;
   }
 
-  return { filterEntries, summarizeEntries, monthKeys, csvCell, toCsv };
+  return { filterEntries, summarizeEntries, monthKeys, cardBalanceAdjustments, csvCell, toCsv };
 });

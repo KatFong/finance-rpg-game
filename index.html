@@ -9,7 +9,7 @@
 <title>理財勇者</title>
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="assets/hero.png">
-<link rel="stylesheet" href="style.css?v=46">
+<link rel="stylesheet" href="style.css?v=47">
 </head>
 <body data-screen="home">
 
@@ -270,6 +270,38 @@
       <button class="btn primary big" id="btn-log-save">確認</button>
     </div>
   </div>
+</div>
+
+<!-- ===== 足印修正表格 ===== -->
+<div class="sheet-mask hidden" id="entry-edit-mask">
+  <form class="sheet account-sheet" id="entry-edit-form" role="dialog" aria-modal="true" aria-labelledby="entry-edit-title">
+    <div class="sheet-handle"></div>
+    <div class="form-sheet-head">
+      <div><span>足印修正</span><h3 id="entry-edit-title">編輯支出</h3></div>
+      <button class="icon-btn" id="entry-edit-close" type="button" aria-label="關閉足印修正表格" title="關閉"><span class="icon" data-icon="close"></span></button>
+    </div>
+    <input id="entry-edit-kind" type="hidden">
+    <input id="entry-edit-id" type="hidden">
+    <div class="account-form-grid entry-edit-grid">
+      <label class="full"><span id="entry-edit-name-label">商戶／名稱</span><input id="entry-edit-name" maxlength="40" placeholder="例如：午餐、超市"></label>
+      <label><span>金額</span><input id="entry-edit-amount" type="number" inputmode="decimal" min="0.01" step="0.01" required></label>
+      <label><span>日期</span><input id="entry-edit-date" type="date" required></label>
+      <label id="entry-edit-category-label"><span>分類</span><select id="entry-edit-category"><option value="food">餐飲／超市</option><option value="transport">交通</option><option value="shopping">購物</option><option value="fun">娛樂</option><option value="bills">帳單</option><option value="other">其他</option></select></label>
+      <label id="entry-edit-card-label"><span>付款位置</span><select id="entry-edit-card"><option value="">現金／銀行</option></select></label>
+    </div>
+    <div class="budget-impact entry-edit-impact" id="entry-edit-impact">
+      <div class="budget-impact-head"><b>計入邊個預算？</b><span>修正後即時重算</span></div>
+      <div class="impact-segments" role="group" aria-label="修正支出預算分類">
+        <button class="active" type="button" data-edit-impact="daily" aria-pressed="true">日常安心額</button>
+        <button type="button" data-edit-impact="committed" aria-pressed="false">固定／預留</button>
+      </div>
+    </div>
+    <p class="form-note" id="entry-edit-note">修正只會更新真實帳目同相關卡片差額，不會再次派發遊戲獎勵。</p>
+    <div class="form-sheet-actions">
+      <button class="btn ghost" id="entry-edit-cancel" type="button">取消</button>
+      <button class="btn primary" type="submit">儲存修正</button>
+    </div>
+  </form>
 </div>
 
 <!-- ===== 願望任務表格 ===== -->
@@ -678,10 +710,10 @@
 <div id="toast" class="hidden"></div>
 
 <script>window.FRPG_CONFIG = { advisorApiUrl: '' };</script>
-<script src="vault.js?v=46"></script>
-<script src="gameplay.js?v=46"></script>
-<script src="ledger.js?v=46"></script>
-<script src="advisor.js?v=46"></script>
-<script src="app.js?v=46"></script>
+<script src="vault.js?v=47"></script>
+<script src="gameplay.js?v=47"></script>
+<script src="ledger.js?v=47"></script>
+<script src="advisor.js?v=47"></script>
+<script src="app.js?v=47"></script>
 </body>
 </html>
