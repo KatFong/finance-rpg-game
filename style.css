@@ -759,6 +759,44 @@ body[data-period="night"] .scene-sky {
 .decision-actions .btn { width: 100%; min-height: 48px; }
 .decision-pass { min-height: 44px; border: 0; background: transparent; color: var(--dim); font-size: 10px; font-weight: 900; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
 
+/* ===== Save crystal ===== */
+.vault-sheet { width: min(100%, 540px); max-height: 92dvh; }
+.vault-head { display: grid; grid-template-columns: 56px minmax(0, 1fr) 40px; align-items: center; gap: 10px; padding: 1px 1px 12px; border-bottom: 1px solid var(--line); }
+.vault-art { width: 54px; height: 54px; display: grid; place-items: center; border: 2px solid #d7b24f; border-radius: 50%; background: #fff5d6; }
+.vault-art img { width: 54px; height: 54px; object-fit: contain; }
+.vault-head > div > span { color: #9f6c17; font-size: 9px; font-weight: 900; }
+.vault-head h3 { margin-top: 2px; color: var(--ink); font-size: 17px; }
+.vault-intro { padding: 13px 2px 11px; color: var(--dim); font-size: 10px; line-height: 1.55; }
+.vault-live { margin: 0 -16px; border-block: 1px solid #c5dcd7; background: #f1f8f5; }
+.vault-live-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 18px 9px; }
+.vault-live-head > div span, .vault-live-head > div b { display: block; }
+.vault-live-head > div span { color: var(--dim); font-size: 8px; font-weight: 800; }
+.vault-live-head > div b { margin-top: 2px; color: var(--ink); font-size: 16px; }
+.vault-live-head small { color: var(--dim); text-align: right; font-size: 8px; line-height: 1.45; }
+.vault-live-head small b { color: var(--ink-soft); }
+.vault-live-summary, .vault-preview-summary { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); border-top: 1px solid #d2e2de; }
+.vault-live-summary > div, .vault-preview-summary > div { min-width: 0; padding: 9px 5px 11px; text-align: center; }
+.vault-live-summary > div + div, .vault-preview-summary > div + div { border-left: 1px solid #d2e2de; }
+.vault-live-summary span, .vault-live-summary b, .vault-preview-summary span, .vault-preview-summary b { display: block; }
+.vault-live-summary span, .vault-preview-summary span { color: var(--dim); font-size: 7px; font-weight: 800; }
+.vault-live-summary b, .vault-preview-summary b { margin-top: 3px; color: var(--ink); font-size: 15px; }
+.vault-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; padding: 14px 1px 9px; }
+.vault-actions .btn { width: 100%; min-height: 48px; }
+.vault-actions .icon svg, #btn-vault .icon svg { width: 18px; height: 18px; }
+.vault-rollback { width: 100%; min-height: 44px; border: 0; background: transparent; color: var(--sky-deep); font-size: 9px; font-weight: 900; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
+.vault-privacy { margin: 3px -16px -16px; padding: 11px 18px max(13px, env(safe-area-inset-bottom)); border-top: 1px solid #e2d5ad; background: #fff9e9; color: #766a4e; font-size: 8px; line-height: 1.55; }
+.vault-preview { padding: 15px 1px 1px; }
+.vault-preview-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.vault-preview-head span { padding: 4px 7px; border-radius: 4px; background: #e3f3e8; color: var(--leaf-deep); font-size: 8px; font-weight: 900; }
+.vault-preview-head b { color: #9a6a15; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 10px; letter-spacing: 0; }
+.vault-preview > h3 { margin-top: 12px; color: var(--ink); font-size: 19px; overflow-wrap: anywhere; }
+.vault-preview > p { margin-top: 3px; color: var(--dim); font-size: 9px; }
+.vault-preview-summary { margin: 13px -16px 0; border-block: 1px solid #c9ddd8; background: #f2f8f6; }
+.vault-warning { margin: 13px 1px; padding: 11px 12px; border-left: 4px solid var(--coral); background: #fff1ed; }
+.vault-warning b { color: #9f4e42; font-size: 10px; }
+.vault-warning p { margin-top: 3px; color: var(--dim); font-size: 9px; line-height: 1.5; }
+.vault-restored-art { width: 110px; height: 110px; object-fit: contain; }
+
 .modal {
   width: min(100%, 370px);
   max-height: 89dvh;

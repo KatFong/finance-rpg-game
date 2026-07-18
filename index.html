@@ -9,7 +9,7 @@
 <title>理財勇者</title>
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="assets/hero.png">
-<link rel="stylesheet" href="style.css?v=34">
+<link rel="stylesheet" href="style.css?v=35">
 </head>
 <body data-screen="home">
 
@@ -202,6 +202,7 @@
     <div id="cat-bars"></div>
     <div class="stack-btns">
       <button class="btn ghost" id="btn-editfin">更新財務檔案</button>
+      <button class="btn ghost" id="btn-vault"><span class="icon" data-icon="save"></span>存檔管理</button>
       <button class="btn ghost" id="btn-shortcut">Apple Shortcuts 快速入帳</button>
       <button class="btn ghost replay-btn" id="btn-replay-intro"><span class="icon" data-icon="play"></span>重播序章</button>
     </div>
@@ -380,6 +381,40 @@
       <button class="icon-btn mic-btn" id="advisor-mic" aria-label="開始語音輸入" title="語音輸入"><span class="icon" data-icon="mic"></span></button>
       <textarea id="advisor-input" rows="1" maxlength="1200" placeholder="記帳、記收入，或者問理財問題…"></textarea>
       <button class="icon-btn send-btn" id="advisor-send" aria-label="傳送訊息" title="傳送"><span class="icon" data-icon="send"></span></button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== 存檔水晶 ===== -->
+<div class="sheet-mask hidden" id="vault-mask">
+  <div class="sheet vault-sheet" id="vault-sheet" role="dialog" aria-labelledby="vault-title">
+    <div class="sheet-handle"></div>
+    <div class="vault-head">
+      <span class="vault-art"><img class="art" data-art="chest-closed" alt="存檔寶箱"></span>
+      <div><span>存檔水晶</span><h3 id="vault-title">帶走你的冒險紀錄</h3></div>
+      <button class="icon-btn" id="vault-close" type="button" aria-label="關閉存檔管理" title="關閉"><span class="icon" data-icon="close"></span></button>
+    </div>
+    <div id="vault-main">
+      <p class="vault-intro">帳目同 RPG 進度只存喺呢個瀏覽器。定期匯出一份存檔，換機或清除網站資料後先有路返嚟。</p>
+      <div class="vault-live" id="vault-live"></div>
+      <div class="vault-actions">
+        <button class="btn primary" id="vault-export" type="button"><span class="icon" data-icon="save"></span>匯出存檔</button>
+        <button class="btn ghost" id="vault-import-trigger" type="button"><span class="icon" data-icon="upload"></span>選擇備份檔</button>
+        <input class="hidden" id="vault-file" type="file" accept="application/json,.json">
+      </div>
+      <button class="vault-rollback hidden" id="vault-rollback" type="button">還原匯入前嘅上一個存檔</button>
+      <p class="vault-privacy">存檔包含你輸入嘅帳目、卡片資料同遊戲進度。檔案唔會上傳伺服器，請存放喺只有你可以開啟嘅位置；App 亦唔會將 API 設定寫入存檔。</p>
+    </div>
+    <div class="vault-preview hidden" id="vault-preview">
+      <div class="vault-preview-head"><span>已驗證存檔</span><b id="vault-preview-code"></b></div>
+      <h3 id="vault-preview-name"></h3>
+      <p id="vault-preview-date"></p>
+      <div class="vault-preview-summary" id="vault-preview-summary"></div>
+      <div class="vault-warning"><b>會取代目前資料</b><p>確認前唔會改動任何帳目。取代時，系統會先保留目前狀態，之後仍可回退一次。</p></div>
+      <div class="form-sheet-actions">
+        <button class="btn ghost" id="vault-preview-cancel" type="button">取消</button>
+        <button class="btn primary" id="vault-restore" type="button">確認復原</button>
+      </div>
     </div>
   </div>
 </div>
@@ -575,8 +610,9 @@
 <div id="toast" class="hidden"></div>
 
 <script>window.FRPG_CONFIG = { advisorApiUrl: '' };</script>
-<script src="gameplay.js?v=34"></script>
-<script src="advisor.js?v=34"></script>
-<script src="app.js?v=34"></script>
+<script src="vault.js?v=35"></script>
+<script src="gameplay.js?v=35"></script>
+<script src="advisor.js?v=35"></script>
+<script src="app.js?v=35"></script>
 </body>
 </html>

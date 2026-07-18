@@ -34,6 +34,8 @@ python3 -m http.server 3900 --directory /Users/kat/finance-rpg-game
 
 軍師入口嘅「買前推演」會將一筆未發生嘅消費變成 RPG 遭遇：按金額、付款來源、消費意義、信用卡還款方式同 APR，並列今日步速、應急護甲、願望機會成本及分期總成本。玩家可以直接準備記帳、放下，或者封存 24 小時；到期後首頁 NPC 會主動提醒回看。三種選擇都屬自主反思，遊戲唔會獎勵「買」或者「唔買」其中一邊。
 
+手帳嘅「存檔管理」可以匯出一份有版本、內容摘要同完整性驗證碼嘅本機 JSON 備份。匯入時會先驗證來源、版本、日期、大小同 checksum，再顯示勇者名及紀錄摘要；確認後先取代資料，而且會自動保留匯入前狀態供一次回退。備份包含帳目同遊戲進度，但唔包含頁面嘅 API 設定，亦唔會自動上傳伺服器。
+
 理財戰況對應個人財務健康：日常掌控、應急護甲、目標進度同自主空間；詳細資料集中喺手帳。設計參考 [CFPB Financial Well-Being](https://www.consumerfinance.gov/data-research/research-reports/financial-well-being/)、[Apple Onboarding](https://developer.apple.com/design/human-interface-guidelines/onboarding) 同 [Making finance fun](https://doi.org/10.1108/IJBM-02-2021-0074)；原則係先用真實行動教識玩家、容許休整，並以自主、能力同清晰下一步支持長期動機。
 
 ## 財務問卷 + 資產負債遊戲化
@@ -115,6 +117,7 @@ UI 拆件流程（`tools/gen-ui.sh`）：
 
 - `index.html` / `style.css` / `app.js` — 遊戲 UI 同核心狀態
 - `gameplay.js` — 七日遠征、週任務、永久章節同願望進度嘅純遊戲規則
+- `vault.js` — 本機存檔版本、清理、完整性驗證、摘要同復原格式
 - `advisor.js` — 對話軍師、本機 fallback、分期計算同信用卡迷宮
 - `api/advisor.js` — 單一 OpenAI Responses API 後端 endpoint
 - `assets/` — 生成嘅美術（hero, boss, chest-closed, chest-open, coin, shield, flame, bg）

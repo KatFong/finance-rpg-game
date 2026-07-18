@@ -3,6 +3,7 @@
 
 /* ===================== 常數 ===================== */
 const LS_KEY = 'frpg_v1';
+const ROLLBACK_KEY = 'frpg_rollback_v1';
 
 const CATS = [
   { id: 'food', name: '餐飲／超市' },
@@ -53,6 +54,7 @@ const defaults = () => ({
   goalRewardWeeks: {},     // weekKey -> rewarded goal id
   activeGoalId: null,
   decisionEncounters: [],  // {id, name, amount, source, intent, status, revisitAt, createdAt}
+  lastBackupAt: null,
   gold: 0, xp: 0, level: 1,
   streak: 0, lastLogDate: null, // streak 保留舊欄位名，現代表累積同行日
   items: { sword: 0, charm: 0, shield: 0, cape: 0 },
@@ -249,6 +251,8 @@ const I = {
   scroll: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 4h11a2 2 0 012 2v12a2 2 0 01-2 2H8a2 2 0 01-2-2V4z"/><path d="M6 4a2 2 0 00-2 2v2h4"/><path d="M10 9h6M10 13h6M10 17h4"/></svg>`,
   plus: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>`,
   sparkles: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.2 3.8L17 8l-3.8 1.2L12 13l-1.2-3.8L7 8l3.8-1.2L12 3zM5 15l.8 2.2L8 18l-2.2.8L5 21l-.8-2.2L2 18l2.2-.8L5 15zM19 13l.7 2.3L22 16l-2.3.7L19 19l-.7-2.3L16 16l2.3-.7L19 13z"/></svg>`,
+  save: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 3h12l2 2v16H5z"/><path d="M8 3v6h8V3M8 21v-7h8v7"/></svg>`,
+  upload: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4M7 9l5-5 5 5M5 20h14"/></svg>`,
   bag: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 8h14l-1 12a2 2 0 01-2 2H8a2 2 0 01-2-2L5 8z"/><path d="M8 8V6a4 4 0 018 0v2"/></svg>`,
   chart: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 20V10M10 20V4M16 20v-8M20 20H4"/></svg>`,
   food: `<svg viewBox="0 0 24 24" fill="none" stroke="#ffc93c" stroke-width="2" stroke-linecap="round"><path d="M4 11h16a8 8 0 01-16 0z" fill="#3a2b6b"/><path d="M8 8c0-1 .5-2 .5-2M12 8c0-1 .5-2 .5-2M16 8c0-1 .5-2 .5-2"/></svg>`,
@@ -1424,6 +1428,129 @@ function resolveDecisionEncounter(status) {
     decisionId: entry.id,
   });
   if (xp) toast('推演完成 · 今日反思 XP +15');
+}
+
+/* ===================== 存檔水晶 ===================== */
+let pendingVaultBackup = null;
+
+function vaultDate(value) {
+  if (!value) return '未曾匯出';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '日期不明';
+  return new Intl.DateTimeFormat('zh-HK', { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }).format(date);
+}
+
+function vaultSummaryHtml(summary) {
+  const moneyEntries = Number(summary.expenses || 0) + Number(summary.incomeEntries || 0);
+  return `<div><span>收支足印</span><b>${moneyEntries}</b></div>
+    <div><span>信用卡／分期</span><b>${Number(summary.cards || 0) + Number(summary.installments || 0)}</b></div>
+    <div><span>願望章節</span><b>${summary.goals || 0}</b></div>
+    <div><span>消費卷軸</span><b>${summary.decisions || 0}</b></div>`;
+}
+
+function renderVault() {
+  const summary = FinanceVault.summary(S);
+  $('vault-live').innerHTML = `<div class="vault-live-head"><div><span>目前勇者</span><b>${escapeHtml(summary.heroName)}</b></div><small>上次匯出<br><b>${vaultDate(S.lastBackupAt)}</b></small></div>
+    <div class="vault-live-summary">${vaultSummaryHtml(summary)}</div>`;
+  let rollbackAvailable = false;
+  try { rollbackAvailable = !!localStorage.getItem(ROLLBACK_KEY); } catch (error) {}
+  $('vault-rollback').classList.toggle('hidden', !rollbackAvailable);
+}
+
+function openVault() {
+  pendingVaultBackup = null;
+  $('vault-preview').classList.add('hidden');
+  $('vault-main').classList.remove('hidden');
+  $('vault-file').value = '';
+  renderVault();
+  $('vault-mask').classList.remove('hidden');
+}
+
+function closeVault() { $('vault-mask').classList.add('hidden'); }
+
+function exportVault() {
+  S.lastBackupAt = Date.now();
+  save();
+  const backup = FinanceVault.createBackup(S, new Date(S.lastBackupAt).toISOString());
+  const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  const time = new Date();
+  link.href = url;
+  link.download = `finance-rpg-${todayKey()}-${pad(time.getHours())}${pad(time.getMinutes())}.json`;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  renderVault();
+  softVibrate([8, 22, 8]);
+  toast(`存檔已匯出 · 驗證碼 ${backup.checksum.toUpperCase()}`);
+}
+
+function showVaultPreview(backup) {
+  pendingVaultBackup = backup;
+  $('vault-main').classList.add('hidden');
+  $('vault-preview').classList.remove('hidden');
+  $('vault-preview-code').textContent = backup.checksum.toUpperCase();
+  $('vault-preview-name').textContent = `${backup.summary.heroName} 嘅冒險存檔`;
+  $('vault-preview-date').textContent = `匯出於 ${vaultDate(backup.exportedAt)} · 格式 v${backup.version}`;
+  $('vault-preview-summary').innerHTML = vaultSummaryHtml(backup.summary);
+}
+
+async function readVaultFile(event) {
+  const file = event.target.files && event.target.files[0];
+  if (!file) return;
+  if (file.size > 5 * 1024 * 1024) { toast('存檔大過 5MB，為安全起見未有讀取'); return; }
+  try {
+    showVaultPreview(FinanceVault.parseBackup(await file.text()));
+  } catch (error) {
+    toast(error && error.message ? error.message : '存檔驗證失敗');
+  } finally {
+    event.target.value = '';
+  }
+}
+
+function applyVaultBackup(backup, keepCurrent) {
+  if (keepCurrent) {
+    try { localStorage.setItem(ROLLBACK_KEY, JSON.stringify(FinanceVault.createBackup(S))); } catch (error) {}
+  }
+  localStorage.setItem(LS_KEY, JSON.stringify(backup.state));
+  S = load();
+  save();
+  pendingVaultBackup = null;
+  closeVault();
+  renderAll();
+  switchScreen('stats');
+  if (!S.onboarded || !S.finProfile) openFinWizard();
+  popup('存檔已復原', `<img class="art vault-restored-art" data-art="chest-open" alt="已開啟存檔寶箱"><p class="expedition-popup-copy"><b>${escapeHtml(S.heroName)}</b> 嘅帳目同冒險進度已經返到營地。${keepCurrent ? '<br>復原前狀態已保留，可以喺存檔管理回退一次。' : ''}</p>`);
+  softVibrate([10, 28, 10]);
+}
+
+function restoreVault() {
+  if (!pendingVaultBackup) return;
+  applyVaultBackup(pendingVaultBackup, true);
+}
+
+function cancelVaultPreview() {
+  pendingVaultBackup = null;
+  $('vault-preview').classList.add('hidden');
+  $('vault-main').classList.remove('hidden');
+  renderVault();
+}
+
+function restoreVaultRollback() {
+  let rollback;
+  try { rollback = FinanceVault.parseBackup(localStorage.getItem(ROLLBACK_KEY)); } catch (error) { toast('回退存檔已經失效'); return; }
+  closeVault();
+  popup('還原上一個存檔？', `<p class="confirm-copy"><b>${escapeHtml(rollback.summary.heroName)} · ${vaultDate(rollback.exportedAt)}</b><br>目前狀態會同上一個存檔交換，仍然可以再回退一次。</p>`, {
+    confirmLabel: '確認還原',
+    cancelLabel: '保留目前狀態',
+    onConfirm: () => {
+      const current = FinanceVault.createBackup(S);
+      localStorage.setItem(ROLLBACK_KEY, JSON.stringify(current));
+      applyVaultBackup(rollback, false);
+    },
+  });
 }
 
 /* ===================== 商店 ===================== */
@@ -2706,6 +2833,15 @@ function init() {
   $('btn-home-status').onclick = showStatusDialogue;
   $('btn-history-add').onclick = () => openLogSheet('expense');
   $('btn-card-add').onclick = () => openCardForm();
+  $('btn-vault').onclick = openVault;
+  $('vault-close').onclick = closeVault;
+  $('vault-mask').onclick = (event) => { if (event.target === $('vault-mask')) closeVault(); };
+  $('vault-export').onclick = exportVault;
+  $('vault-import-trigger').onclick = () => $('vault-file').click();
+  $('vault-file').onchange = readVaultFile;
+  $('vault-preview-cancel').onclick = cancelVaultPreview;
+  $('vault-restore').onclick = restoreVault;
+  $('vault-rollback').onclick = restoreVaultRollback;
   $('goal-form').onsubmit = saveGoalForm;
   $('goal-form-close').onclick = closeGoalForm;
   $('goal-form-cancel').onclick = closeGoalForm;
