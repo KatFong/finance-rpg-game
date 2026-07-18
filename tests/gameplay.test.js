@@ -13,6 +13,9 @@ const {
   goalProgress,
   goalPace,
   monthlyCommitmentSchedule,
+  creditStatementModel,
+  applyCreditCardPayment,
+  reverseCreditCardPayment,
   installmentQuote,
   purchaseEncounter,
 } = require('../gameplay.js');
@@ -144,6 +147,59 @@ test('rejects an impossible commitment month without inventing due dates', () =>
   assert.equal(schedule.items.length, 0);
   assert.equal(schedule.outstanding, 0);
   assert.equal(schedule.next, null);
+});
+
+test('separates a card statement from purchases made after cutoff', () => {
+  assert.deepEqual(creditStatementModel({
+    currentBalance: 1000,
+    statementBalance: 600,
+    minimumPayment: 100,
+  }), {
+    currentBalance: 1000,
+    statementKnown: true,
+    statementDue: 600,
+    minimumKnown: true,
+    minimumDue: 100,
+    postStatementSpend: 400,
+  });
+});
+
+test('applies card payments to the statement without erasing post-cutoff spend', () => {
+  const card = { currentBalance: 1000, statementBalance: 600, minimumPayment: 100 };
+  assert.deepEqual(applyCreditCardPayment(card, 100), {
+    payment: 100,
+    currentBalance: 900,
+    statementBalance: 500,
+    minimumPayment: 0,
+    statementApplied: 100,
+    minimumApplied: 100,
+  });
+  assert.equal(applyCreditCardPayment(card, 600).currentBalance, 400);
+  assert.equal(applyCreditCardPayment(card, 600).statementBalance, 0);
+});
+
+test('keeps a legacy card statement unknown after a partial payment', () => {
+  const result = applyCreditCardPayment({ currentBalance: 300 }, 100);
+  assert.equal(result.currentBalance, 200);
+  assert.equal(result.statementBalance, null);
+  assert.equal(result.statementApplied, 0);
+});
+
+test('restores statement and minimum progress when a tracked payment is deleted', () => {
+  const restored = reverseCreditCardPayment(
+    { currentBalance: 900, statementBalance: 500, minimumPayment: 0 },
+    { amount: 100, statementApplied: 100, minimumApplied: 100 }
+  );
+  assert.deepEqual(restored, {
+    currentBalance: 1000,
+    statementBalance: 600,
+    minimumPayment: 100,
+  });
+  assert.deepEqual(reverseCreditCardPayment({ currentBalance: 200 }, { amount: 100 }), {
+    currentBalance: 300,
+    statementBalance: null,
+    minimumPayment: null,
+  });
 });
 
 test('shows when a daily purchase needs a funding plan', () => {

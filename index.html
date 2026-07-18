@@ -9,7 +9,7 @@
 <title>理財勇者</title>
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="assets/hero.png">
-<link rel="stylesheet" href="style.css?v=47">
+<link rel="stylesheet" href="style.css?v=48">
 </head>
 <body data-screen="home">
 
@@ -423,7 +423,10 @@
       <label class="full"><span>卡片名稱</span><input id="card-name" maxlength="24" placeholder="例如：恒生 Visa" required></label>
       <label><span>卡號尾數 <small>選填</small></span><input id="card-last4" inputmode="numeric" maxlength="4" placeholder="1234"></label>
       <label><span>信用額 <small>選填</small></span><input id="card-limit" type="number" inputmode="decimal" min="0" placeholder="20000"></label>
-      <label class="full"><span>目前一般結欠 <small>另加分期時，勿重複計未到期本金</small></span><input id="card-balance" type="number" inputmode="decimal" min="0" step="0.01" placeholder="冇結欠請填 0" required></label>
+      <label class="full"><span>目前總結欠 <small>包括今期帳單同截數後新簽帳；分期未到期本金毋須重複加入</small></span><input id="card-balance" type="number" inputmode="decimal" min="0" step="0.01" placeholder="冇結欠請填 0" required></label>
+      <label><span>今期帳單結欠 <small>未知可留空</small></span><input id="card-statement-balance" type="number" inputmode="decimal" min="0" step="0.01" placeholder="帳單上應繳總額"></label>
+      <label><span>今期最低還款 <small>未知可留空</small></span><input id="card-minimum-payment" type="number" inputmode="decimal" min="0" step="0.01" placeholder="帳單上最低金額"></label>
+      <label class="full"><span>今期帳單到期日 <small>有今期結欠時請按帳單填寫</small></span><input id="card-statement-due-date" type="date"></label>
       <label><span>每月截數日</span><input id="card-statement-day" type="number" inputmode="numeric" min="1" max="31" placeholder="5" required></label>
       <label><span>每月還款日</span><input id="card-due-day" type="number" inputmode="numeric" min="1" max="31" placeholder="25" required></label>
       <label class="full"><span>年利率 APR <small>未知可留空</small></span><input id="card-apr" type="number" inputmode="decimal" min="0" step="0.01" placeholder="例如 35"></label>
@@ -444,12 +447,22 @@
       <button class="icon-btn" id="card-payment-close" type="button" aria-label="關閉信用卡還款表格" title="關閉"><span class="icon" data-icon="close"></span></button>
     </div>
     <input id="card-payment-id" type="hidden">
-    <div class="payment-balance"><span>目前已記結欠</span><b id="card-payment-balance">$0</b></div>
+    <div class="payment-balance"><span id="card-payment-focus-label">今期尚欠</span><b id="card-payment-balance">$0</b></div>
+    <div class="card-payment-summary" aria-live="polite">
+      <div><span>目前總結欠</span><b id="card-payment-current">$0</b></div>
+      <div><span>截數後新簽帳</span><b id="card-payment-post">待補資料</b></div>
+    </div>
+    <div class="card-payment-presets" id="card-payment-presets" aria-label="選擇還款方式">
+      <button type="button" data-card-payment-preset="statement">全數今期帳單</button>
+      <button type="button" data-card-payment-preset="minimum">最低還款</button>
+      <button type="button" data-card-payment-preset="current">全部目前結欠</button>
+    </div>
     <div class="account-form-grid payment-form-grid">
       <label class="full"><span>今次還款金額</span><input id="card-payment-amount" type="number" inputmode="decimal" min="0.01" step="0.01" placeholder="例如 1500" required></label>
       <label class="full"><span>還款日期</span><input id="card-payment-date" type="date" required></label>
     </div>
-    <p class="form-note">呢筆會減低卡片結欠，屬於資金轉移，唔會再當成新支出或扣減日常安心額。</p>
+    <p class="card-payment-hint" id="card-payment-hint" aria-live="polite"></p>
+    <p class="form-note">還款屬資金轉移，唔會再當成新支出或扣減日常安心額。利息及實際入帳次序以發卡行帳單為準。</p>
     <div class="form-sheet-actions">
       <button class="btn ghost" id="card-payment-cancel" type="button">取消</button>
       <button class="btn primary" type="submit">確認還款</button>
@@ -710,10 +723,10 @@
 <div id="toast" class="hidden"></div>
 
 <script>window.FRPG_CONFIG = { advisorApiUrl: '' };</script>
-<script src="vault.js?v=47"></script>
-<script src="gameplay.js?v=47"></script>
-<script src="ledger.js?v=47"></script>
-<script src="advisor.js?v=47"></script>
-<script src="app.js?v=47"></script>
+<script src="vault.js?v=48"></script>
+<script src="gameplay.js?v=48"></script>
+<script src="ledger.js?v=48"></script>
+<script src="advisor.js?v=48"></script>
+<script src="app.js?v=48"></script>
 </body>
 </html>

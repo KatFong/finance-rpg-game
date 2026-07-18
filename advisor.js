@@ -62,7 +62,7 @@
       const [year, month, day] = key.split('-').map(Number);
       return Date.UTC(year, month - 1, day);
     };
-    return Math.max(0, Math.round((toUtc(dateKey) - toUtc(todayKey)) / 86400000));
+    return Math.round((toUtc(dateKey) - toUtc(todayKey)) / 86400000);
   }
 
   function shortDate(dateKey) {
@@ -501,7 +501,8 @@
     if (!card && draft.cardName) {
       card = {
         id: makeId('card'), name: draft.cardName, last4: null, creditLimit: null,
-        currentBalance: 0, statementDay: null, dueDay: null, annualRate: null,
+        currentBalance: 0, statementBalance: null, minimumPayment: null, statementDueDate: null,
+        statementDay: null, dueDay: null, annualRate: null,
         createdAt: Date.now(),
       };
       state.creditCards.push(card);
@@ -537,6 +538,7 @@
       state.creditCards.push({
         id: makeId('card'), name: String(draft.cardName).slice(0, 24), last4: draft.last4 || null,
         creditLimit: draft.creditLimit || null, currentBalance: draft.currentBalance || 0,
+        statementBalance: null, minimumPayment: null, statementDueDate: null,
         statementDay: draft.statementDay || null, dueDay: draft.dueDay || null,
         annualRate: draft.annualRate, createdAt: Date.now(),
       });
@@ -573,12 +575,25 @@
       }
       const amount = roundMoney(draft.amount);
       const paymentDate = draft.date || bridge.today();
-      card.currentBalance = roundMoney(Math.max(0, Number(card.currentBalance || 0) - amount));
-      state.cardPayments.push({ id: makeId('cardpay'), cardId: card.id, amount, dateKey: paymentDate, ts: Date.now() });
+      const before = FinanceGameplay.creditStatementModel(card);
+      if (!(amount > 0) || amount > before.currentBalance) {
+        addMessage('assistant', `呢張卡目前已記結欠係 ${fmt(before.currentBalance)}。請核對實際還款金額再確認。`);
+        return;
+      }
+      const result = FinanceGameplay.applyCreditCardPayment(card, amount);
+      card.currentBalance = result.currentBalance;
+      if (before.statementKnown) card.statementBalance = result.statementBalance;
+      if (before.minimumKnown) card.minimumPayment = result.minimumPayment;
+      state.cardPayments.push({
+        id: makeId('cardpay'), cardId: card.id, amount: result.payment,
+        ...(before.statementKnown ? { statementApplied: result.statementApplied } : {}),
+        ...(before.minimumKnown ? { minimumApplied: result.minimumApplied } : {}),
+        dateKey: paymentDate, ts: Date.now(),
+      });
       if (paymentDate === bridge.today()) bridge.invalidateReview();
       bridge.dailyReward('card-payment', 15, 20, paymentDate === bridge.today());
       bridge.commit();
-      confirmation = `${card.name} 已還 ${fmt(amount)}；呢筆係減債，冇當成新消費。`;
+      confirmation = `${card.name} 已還 ${fmt(result.payment)}；呢筆係減債，冇當成新消費。`;
     }
     activeDraft = null;
     renderDraft();
@@ -742,10 +757,18 @@
     const remaining = roundMoney(plans.reduce((sum, plan) => sum + (plan.schedule || [])
       .filter((payment) => payment.status !== 'paid').reduce((subtotal, payment) => subtotal + payment.amount, 0), 0));
     const thisMonth = monthReserved(state, bridge.month());
+    const statementTotal = roundMoney(cards.reduce((sum, card) => {
+      const statement = FinanceGameplay.creditStatementModel(card);
+      return sum + (statement.statementKnown ? statement.statementDue : 0);
+    }, 0));
+    const statementGaps = cards.filter((card) => {
+      const statement = FinanceGameplay.creditStatementModel(card);
+      return statement.currentBalance > 0 && (!statement.statementKnown || (statement.statementDue > 0 && !/^\d{4}-\d{2}-\d{2}$/.test(String(card.statementDueDate || ''))));
+    });
     summary.innerHTML = `
       <div class="stat-box"><div class="v">${cards.length}</div><div class="k">迷宮入口</div></div>
-      <div class="stat-box"><div class="v">${fmt(thisMonth)}</div><div class="k">本月待守供款</div></div>
-      <div class="stat-box wide"><div class="v">${fmt(remaining)}</div><div class="k">分期任務剩餘總供款</div></div>`;
+      <div class="stat-box"><div class="v">${fmt(statementTotal)}</div><div class="k">已知今期帳單</div></div>
+      <div class="stat-box wide"><div class="v">${fmt(thisMonth)}</div><div class="k">本月分期供款 · 剩餘總供款 ${fmt(remaining)}</div></div>`;
     const priorities = [];
     plans.forEach((plan) => {
       const next = (plan.schedule || []).find((payment) => payment.status !== 'paid');
@@ -763,16 +786,15 @@
       });
     });
     cards.forEach((card) => {
-      if (!(Number(card.currentBalance || 0) > 0)) return;
-      const date = nextMonthlyDate(card.dueDay, today);
-      if (!date) return;
+      const statement = FinanceGameplay.creditStatementModel(card);
+      if (!statement.statementKnown || !(statement.statementDue > 0) || !/^\d{4}-\d{2}-\d{2}$/.test(String(card.statementDueDate || ''))) return;
       priorities.push({
         kind: 'card',
         cardId: card.id,
-        date,
-        amount: card.currentBalance,
-        amountLabel: '目前結欠',
-        title: `${card.name} 還款日檢查`,
+        date: card.statementDueDate,
+        amount: statement.statementDue,
+        amountLabel: '今期尚欠',
+        title: `${card.name} 今期帳單`,
         prompt: `我想處理 ${card.name} 嘅本期還款`,
       });
     });
@@ -785,7 +807,8 @@
       const days = daysUntil(nextPriority.date, today);
       priority.className = `credit-priority${days <= 7 ? ' urgent' : ''}`;
       const actionLabel = nextPriority.kind === 'installment' ? '查看分期' : '記還款';
-      priority.innerHTML = `<div><span>${days === 0 ? '今日要處理' : `最近行動 · ${days} 日後`}</span><b>${escapeHtml(nextPriority.title)}</b><p>${shortDate(nextPriority.date)} · ${nextPriority.amountLabel} ${fmt(nextPriority.amount)}</p></div><button class="btn small primary" id="credit-priority-action">${actionLabel}</button>`;
+      const timing = days < 0 ? `已逾期 ${Math.abs(days)} 日` : days === 0 ? '今日要處理' : `最近行動 · ${days} 日後`;
+      priority.innerHTML = `<div><span>${timing}</span><b>${escapeHtml(nextPriority.title)}</b><p>${shortDate(nextPriority.date)} · ${nextPriority.amountLabel} ${fmt(nextPriority.amount)}</p></div><button class="btn small primary" id="credit-priority-action">${actionLabel}</button>`;
       $('credit-priority-action').onclick = () => {
         if (nextPriority.kind === 'card') bridge.openCardPaymentForm(nextPriority.cardId);
         else {
@@ -793,10 +816,10 @@
           if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
         }
       };
-    } else if (cards.some((card) => !card.dueDay)) {
-      const incomplete = cards.find((card) => !card.dueDay);
+    } else if (statementGaps.length) {
+      const incomplete = statementGaps[0];
       priority.className = 'credit-priority needs-info';
-      priority.innerHTML = '<div><span>資料缺口</span><b>補上每張卡嘅還款日</b><p>完整資料先可以準確安排下一步。</p></div><button class="btn small ghost" id="credit-priority-action">補資料</button>';
+      priority.innerHTML = `<div><span>帳單資料缺口</span><b>補上 ${escapeHtml(incomplete.name)} 今期帳單</b><p>目前結欠未必等於今期應繳；補上帳單金額、最低還款同實際到期日先安排提醒。</p></div><button class="btn small ghost" id="credit-priority-action">補資料</button>`;
       $('credit-priority-action').onclick = () => bridge.openCardForm(incomplete.id);
     } else {
       priority.className = 'credit-priority clear';
@@ -808,12 +831,32 @@
     }
     list.innerHTML = cards.map((card) => {
       const cardPlans = plans.filter((plan) => plan.cardId === card.id);
+      const statement = FinanceGameplay.creditStatementModel(card);
       const outstanding = roundMoney(cardPlans.reduce((sum, plan) => sum + (plan.schedule || [])
         .filter((payment) => payment.status !== 'paid').reduce((subtotal, payment) => subtotal + payment.principal, 0), 0) + Number(card.currentBalance || 0));
       const utilization = card.creditLimit ? Math.min(100, outstanding / card.creditLimit * 100) : 0;
       const nextPlanPayment = cardPlans.map((plan) => (plan.schedule || []).find((payment) => payment.status !== 'paid')).filter(Boolean).sort((a, b) => a.dueDate.localeCompare(b.dueDate))[0];
-      const nextDate = nextPlanPayment ? nextPlanPayment.dueDate : nextMonthlyDate(card.dueDay, today);
+      const nextActions = [];
+      if (nextPlanPayment) nextActions.push({ date: nextPlanPayment.dueDate, kind: 'plan' });
+      if (statement.statementKnown && statement.statementDue > 0 && /^\d{4}-\d{2}-\d{2}$/.test(String(card.statementDueDate || ''))) {
+        nextActions.push({ date: card.statementDueDate, kind: 'statement' });
+      }
+      nextActions.sort((a, b) => a.date.localeCompare(b.date));
+      const nextAction = nextActions[0] || null;
+      const nextDate = nextAction && nextAction.date;
       const nextDays = nextDate ? daysUntil(nextDate, today) : null;
+      const nextTiming = nextDate
+        ? `${shortDate(nextDate)} · ${nextDays < 0 ? `逾期 ${Math.abs(nextDays)} 日` : nextDays === 0 ? '今日' : `${nextDays} 日後`}`
+        : !statement.statementKnown && statement.currentBalance > 0
+          ? '補上今期帳單資料'
+          : statement.statementKnown && statement.statementDue === 0 && statement.currentBalance > 0
+            ? '今期已清 · 新簽帳稍後處理'
+            : '暫無待處理';
+      const statementNote = !statement.statementKnown
+        ? '目前結欠未拆分今期帳單；補資料後先會準確提醒。'
+        : statement.statementDue > 0
+          ? `${card.statementDueDate ? `${shortDate(card.statementDueDate)} 到期` : '到期日待補'} · ${statement.minimumKnown ? statement.minimumDue > 0 ? `最低仍需 ${fmt(statement.minimumDue)}` : '已達最低還款' : '最低還款待補'}`
+          : statement.currentBalance > 0 ? `今期已清，仍有 ${fmt(statement.postStatementSpend)} 截數後新簽帳。` : '今期帳單已清。';
       const rateWarning = Number(card.annualRate || 0) >= 30 ? '<span class="credit-rate-warning">高息卡：先避免新增循環結欠</span>' : '';
       const planRows = cardPlans.length ? cardPlans.map((plan) => {
         const next = (plan.schedule || []).find((payment) => payment.status !== 'paid');
@@ -827,11 +870,13 @@
       }).join('') : '<p class="credit-no-plan">未有分期任務。</p>';
       return `<article class="credit-card-item" id="credit-card-${escapeHtml(card.id)}">
         <div class="credit-card-head"><div><span>信用卡迷宮</span><h4>${escapeHtml(card.name)} ${card.last4 ? `•••• ${escapeHtml(card.last4)}` : ''}</h4></div><button class="icon-btn" data-card-edit="${escapeHtml(card.id)}" aria-label="編輯${escapeHtml(card.name)}" title="編輯信用卡"><span class="icon" data-icon="edit"></span></button></div>
-        <div class="credit-next${nextDays != null && nextDays <= 7 ? ' urgent' : ''}"><span>下一步</span><b>${nextDate ? `${shortDate(nextDate)} · ${nextDays === 0 ? '今日' : `${nextDays} 日後`}` : '補上還款日'}</b></div>
-        <div class="credit-metrics"><div><span>卡片＋分期結欠</span><b>${fmt(outstanding)}</b></div><div><span>年利率 APR</span><b>${card.annualRate == null ? '未知' : `${card.annualRate}%`}</b></div><div><span>每月截數／還款</span><b>${card.statementDay || '?'} 日／${card.dueDay || '?'} 日</b></div></div>
+        <div class="credit-next${nextDays != null && nextDays <= 7 ? ' urgent' : ''}"><span>下一步</span><b>${nextTiming}</b></div>
+        <div class="credit-metrics"><div><span>目前總結欠</span><b>${fmt(statement.currentBalance)}</b></div><div><span>今期尚欠</span><b>${statement.statementKnown ? fmt(statement.statementDue) : '待補'}</b></div><div><span>截數後簽帳</span><b>${statement.statementKnown ? fmt(statement.postStatementSpend) : '待補'}</b></div><div><span>年利率 APR</span><b>${card.annualRate == null ? '未知' : `${card.annualRate}%`}</b></div></div>
+        <p class="credit-statement-note">${statementNote}</p>
+        <p class="credit-cycle">每月截數 ${card.statementDay || '?'} 日 · 常規還款 ${card.dueDay || '?'} 日</p>
         ${rateWarning}
         ${card.creditLimit ? `<div class="credit-util"><span>額度使用</span><b>${Math.round(utilization)}%</b><div><i style="width:${utilization}%"></i></div></div>` : ''}
-        ${Number(card.currentBalance || 0) > 0 ? `<button class="btn small primary credit-pay-btn" data-card-pay="${escapeHtml(card.id)}">記還款</button>` : ''}
+        ${statement.currentBalance > 0 ? `<button class="btn small primary credit-pay-btn" data-card-pay="${escapeHtml(card.id)}">${statement.statementKnown && statement.statementDue > 0 ? '記帳單還款' : '記還款'}</button>` : ''}
         <div class="installment-list">${planRows}</div>
       </article>`;
     }).join('');

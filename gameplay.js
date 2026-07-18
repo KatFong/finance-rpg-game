@@ -191,6 +191,59 @@
     };
   }
 
+  function creditStatementModel(card) {
+    const currentBalance = Math.max(0, Number(card && card.currentBalance) || 0);
+    const statementKnown = card && card.statementBalance != null && Number.isFinite(Number(card.statementBalance));
+    const statementDue = statementKnown
+      ? Math.min(currentBalance, Math.max(0, Number(card.statementBalance) || 0))
+      : currentBalance;
+    const minimumKnown = statementKnown && card.minimumPayment != null && Number.isFinite(Number(card.minimumPayment));
+    const minimumDue = minimumKnown
+      ? Math.min(statementDue, Math.max(0, Number(card.minimumPayment) || 0))
+      : null;
+    const roundMoney = (value) => Math.round((value + Number.EPSILON) * 100) / 100;
+    return {
+      currentBalance: roundMoney(currentBalance),
+      statementKnown,
+      statementDue: roundMoney(statementDue),
+      minimumKnown,
+      minimumDue: minimumDue == null ? null : roundMoney(minimumDue),
+      postStatementSpend: roundMoney(Math.max(0, currentBalance - statementDue)),
+    };
+  }
+
+  function applyCreditCardPayment(card, requestedAmount) {
+    const model = creditStatementModel(card);
+    const payment = Math.min(model.currentBalance, Math.max(0, Number(requestedAmount) || 0));
+    const roundMoney = (value) => Math.round((value + Number.EPSILON) * 100) / 100;
+    const statementApplied = model.statementKnown ? Math.min(payment, model.statementDue) : 0;
+    const minimumApplied = model.minimumKnown ? Math.min(payment, model.minimumDue) : 0;
+    return {
+      payment: roundMoney(payment),
+      currentBalance: roundMoney(Math.max(0, model.currentBalance - payment)),
+      statementBalance: model.statementKnown ? roundMoney(Math.max(0, model.statementDue - payment)) : null,
+      minimumPayment: model.minimumKnown ? roundMoney(Math.max(0, model.minimumDue - payment)) : null,
+      statementApplied: roundMoney(statementApplied),
+      minimumApplied: roundMoney(minimumApplied),
+    };
+  }
+
+  function reverseCreditCardPayment(card, payment) {
+    const roundMoney = (value) => Math.round((value + Number.EPSILON) * 100) / 100;
+    const currentBalance = roundMoney(Math.max(0, Number(card && card.currentBalance) || 0) + Math.max(0, Number(payment && payment.amount) || 0));
+    const statementTracked = card && card.statementBalance != null
+      && payment && Object.prototype.hasOwnProperty.call(payment, 'statementApplied');
+    const statementBalance = statementTracked
+      ? Math.min(currentBalance, roundMoney(Math.max(0, Number(card.statementBalance) || 0) + Math.max(0, Number(payment.statementApplied) || 0)))
+      : card && card.statementBalance != null ? roundMoney(Math.max(0, Number(card.statementBalance) || 0)) : null;
+    const minimumTracked = statementTracked && card.minimumPayment != null
+      && Object.prototype.hasOwnProperty.call(payment, 'minimumApplied');
+    const minimumPayment = minimumTracked
+      ? Math.min(statementBalance, roundMoney(Math.max(0, Number(card.minimumPayment) || 0) + Math.max(0, Number(payment.minimumApplied) || 0)))
+      : card && card.minimumPayment != null ? roundMoney(Math.max(0, Number(card.minimumPayment) || 0)) : null;
+    return { currentBalance, statementBalance, minimumPayment };
+  }
+
   function installmentQuote(principal, annualRate, months) {
     const amount = Math.max(0, Number(principal) || 0);
     const term = Math.max(1, Math.round(Number(months) || 1));
@@ -253,6 +306,7 @@
   return {
     WEEKLY_QUESTS, CHAPTERS, GOAL_TYPES, chapterFor, weeklyQuestProgress, routeModel,
     expeditionComplete, expeditionTargetDays, goalSaved, goalProgress, goalPace,
-    monthlyCommitmentSchedule, installmentQuote, purchaseEncounter,
+    monthlyCommitmentSchedule, creditStatementModel, applyCreditCardPayment, reverseCreditCardPayment,
+    installmentQuote, purchaseEncounter,
   };
 });

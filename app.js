@@ -54,9 +54,9 @@ const defaults = () => ({
   finProfile: null,        // {incomeType:'fixed'|'variable', income, savings}
   debts: [],               // {id, name, orig, balance}
   repayments: [],          // {id, ts, debtId, amount}
-  creditCards: [],         // {id, name, last4, creditLimit, currentBalance, statementDay, dueDay, annualRate}
+  creditCards: [],         // {id, name, last4, creditLimit, currentBalance, statementBalance, minimumPayment, statementDueDate, statementDay, dueDay, annualRate}
   installments: [],        // {id, cardId, principal, termMonths, schedule:[]}
-  cardPayments: [],        // {id, cardId, amount, dateKey, ts}
+  cardPayments: [],        // {id, cardId, amount, statementApplied?, minimumApplied?, dateKey, ts}
   incomes: [],             // {id, ts, dateKey, source, amount}
   goals: [],               // {id, name, type, target, initialAmount, deadline, rewarded, completedAt}
   goalContributions: [],   // {id, goalId, amount, source:'new_saving'|'allocated', dateKey, ts}
@@ -115,6 +115,35 @@ function commitmentReminder(includeUpcoming = true) {
   const schedule = commitmentSchedule();
   return schedule.items.find((item) => item.status === 'overdue' || item.status === 'due')
     || (includeUpcoming ? schedule.items.find((item) => item.dueSoon) : null);
+}
+function creditStatementModel(card) {
+  return FinanceGameplay.creditStatementModel(card);
+}
+function normalizeCreditStatement(card) {
+  if (!card || card.statementBalance == null) return;
+  card.statementBalance = Math.min(Math.max(0, Number(card.currentBalance) || 0), Math.max(0, Number(card.statementBalance) || 0));
+  if (card.minimumPayment != null) {
+    card.minimumPayment = Math.min(card.statementBalance, Math.max(0, Number(card.minimumPayment) || 0));
+  }
+}
+function daysFromToday(dateKey) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(dateKey || ''))) return null;
+  const utc = (key) => {
+    const [year, month, day] = key.split('-').map(Number);
+    return Date.UTC(year, month - 1, day);
+  };
+  return Math.round((utc(dateKey) - utc(todayKey())) / 86400000);
+}
+function creditStatementReminder(includeUpcoming = true) {
+  return (S.creditCards || []).map((card) => {
+    const statement = creditStatementModel(card);
+    const daysUntil = daysFromToday(card.statementDueDate);
+    return { card, statement, daysUntil };
+  }).filter((entry) => entry.statement.statementKnown
+    && entry.statement.statementDue > 0
+    && entry.daysUntil != null
+    && (entry.daysUntil <= 0 || (includeUpcoming && entry.daysUntil <= 3)))
+    .sort((a, b) => a.daysUntil - b.daysUntil)[0] || null;
 }
 function mondayOf(d) { const x = new Date(d); x.setDate(x.getDate() - ((x.getDay() + 6) % 7)); return x; }
 function weekKey() { return keyOf(mondayOf(new Date())); }
@@ -471,17 +500,22 @@ function renderSceneDialogue(force) {
   const period = periodInfo();
   const pendingDecision = dueDecision();
   const billReminder = commitmentReminder(true);
-  const key = [todayKey(), S.heroName, pace.safe, bossMaxHp(), spent, logsToday(), bossDamage(), S.boss.claimed, S.lastLogDate, objective.label].join('|');
+  const cardReminder = creditStatementReminder(true);
+  const key = [todayKey(), S.heroName, pace.safe, bossMaxHp(), spent, logsToday(), bossDamage(), S.boss.claimed, S.lastLogDate, objective.label, cardReminder && cardReminder.statement.statementDue].join('|');
   if (!force && activeDialogueKey === key && homeReminder) return;
   activeDialogueKey = key;
 
   let text;
-  if (billReminder && ['overdue', 'due'].includes(billReminder.status)) {
+  if (cardReminder && cardReminder.daysUntil <= 0) {
+    text = `${S.heroName}，${cardReminder.card.name} 今期帳單尚欠 ${fmt(cardReminder.statement.statementDue)}，${cardReminder.daysUntil < 0 ? `已過到期日 ${Math.abs(cardReminder.daysUntil)} 日` : '今日到期'}。還款唔會再計消費；我會保留截數後新簽帳，唔會一筆抹走。`;
+  } else if (billReminder && ['overdue', 'due'].includes(billReminder.status)) {
     text = `${S.heroName}，${billReminder.name}${billReminder.status === 'overdue' ? `已過期 ${Math.abs(billReminder.daysUntil)} 日` : '今日到期'}，預計 ${fmt(billReminder.amount)}。固定帳單唔會扣你今日生活額度，但需要確認實際有冇扣款。`;
   } else if (dead && !S.boss.claimed) {
     text = `${S.heroName}，你做到了！慾望魔王已經倒下，今週每一次克制都冇白費。先收好獎勵啦。`;
   } else if (pendingDecision) {
     text = `${S.heroName}，「${pendingDecision.name}」已經喺卷軸入面休息咗 24 小時。依家再望一次數字同感受，答案可能比昨日清楚。`;
+  } else if (cardReminder && cardReminder.daysUntil > 0 && objective.label === '處理今期帳單') {
+    text = `${S.heroName}，${cardReminder.card.name} 今期尚欠 ${fmt(cardReminder.statement.statementDue)}，仲有 ${cardReminder.daysUntil} 日到期。最低還款只係避免漏繳嘅底線；實際利息按發卡行帳單。`;
   } else if (billReminder && billReminder.status === 'upcoming' && objective.label === '查看每月承諾') {
     text = `${S.heroName}，${billReminder.name} 仲有 ${billReminder.daysUntil} 日到期，預計 ${fmt(billReminder.amount)}。我只係提前提你預留，未付款前唔會當成支出。`;
   } else if (!active && returning) {
@@ -1123,11 +1157,22 @@ function buildObjective() {
   const affordable = SHOP.find((it) => S.gold >= it.cost && !(it.once && S.items[it.id] > 0));
   const todayMeta = meta(t);
   const pendingDecision = dueDecision();
+  const urgentCardStatement = creditStatementReminder(false);
+  const upcomingCardStatement = creditStatementReminder(true);
   const urgentCommitment = commitmentReminder(false);
   const upcomingCommitment = commitmentReminder(true);
   const untaggedExpense = [...S.expenses].reverse().find((item) => item.dateKey === t && expenseBudgetImpact(item) === 'daily' && !item.intent);
   const claimableQuest = QUESTS.find((q) => questProgress(q) >= q.target && !todayMeta.questsClaimed.includes(q.id));
 
+  if (urgentCardStatement) {
+    const overdue = urgentCardStatement.daysUntil < 0;
+    return {
+      reward: overdue ? '帳單已逾期' : '帳單今日到期',
+      body: `<b>${escapeHtml(urgentCardStatement.card.name)}</b> 今期尚欠 ${fmt(urgentCardStatement.statement.statementDue)}。${overdue ? `已過到期日 ${Math.abs(urgentCardStatement.daysUntil)} 日；先核對發卡行最新狀態。` : '今日到期；還款會先扣今期帳單，截數後簽帳仍然保留。'}`,
+      label: '處理今期帳單',
+      action: () => openCardPaymentForm(urgentCardStatement.card.id),
+    };
+  }
   if (urgentCommitment) {
     const overdue = urgentCommitment.status === 'overdue';
     return {
@@ -1178,6 +1223,14 @@ function buildObjective() {
       body: `今日已有 <b>${moneyActivityCount(t)}</b> 個金流足印。收隊前望一眼日常、固定、收入同還款，唔使為湊數再記。`,
       label: '完成今日盤點',
       action: reviewToday,
+    };
+  }
+  if (upcomingCardStatement && upcomingCardStatement.daysUntil > 0) {
+    return {
+      reward: `${upcomingCardStatement.daysUntil} 日後`,
+      body: `<b>${escapeHtml(upcomingCardStatement.card.name)}</b> 今期尚欠 ${fmt(upcomingCardStatement.statement.statementDue)}。最低還款${upcomingCardStatement.statement.minimumKnown ? ` ${fmt(upcomingCardStatement.statement.minimumDue)}` : '仍待補資料'}；實際利息按發卡行帳單。`,
+      label: '處理今期帳單',
+      action: () => openCardPaymentForm(upcomingCardStatement.card.id),
     };
   }
   if (upcomingCommitment && upcomingCommitment.status === 'upcoming') {
@@ -2432,7 +2485,10 @@ function saveEntryEdit(event) {
   const oldDate = expense.dateKey;
   FinanceLedger.cardBalanceAdjustments(expense, { cardId, amount }).forEach(({ cardId: changedCardId, delta }) => {
     const card = S.creditCards.find((item) => item.id === changedCardId);
-    if (card) card.currentBalance = Math.max(0, Math.round(((Number(card.currentBalance || 0) + delta) + Number.EPSILON) * 100) / 100);
+    if (card) {
+      card.currentBalance = Math.max(0, Math.round(((Number(card.currentBalance || 0) + delta) + Number.EPSILON) * 100) / 100);
+      normalizeCreditStatement(card);
+    }
   });
   Object.assign(expense, {
     merchant: name || null,
@@ -2658,7 +2714,10 @@ function renderStats() {
           }
         } else if (expense.cardId) {
           const card = S.creditCards.find((item) => item.id === expense.cardId);
-          if (card) card.currentBalance = Math.max(0, Number(card.currentBalance || 0) - Number(expense.amount || 0));
+          if (card) {
+            card.currentBalance = Math.max(0, Number(card.currentBalance || 0) - Number(expense.amount || 0));
+            normalizeCreditStatement(card);
+          }
         }
         S.expenses = S.expenses.filter((entry) => entry.id !== expense.id);
         invalidateReview(expense.dateKey);
@@ -2691,7 +2750,12 @@ function renderStats() {
       confirmLabel: '確認刪除',
       cancelLabel: '保留紀錄',
       onConfirm: () => {
-        if (card) card.currentBalance = Number(card.currentBalance || 0) + Number(payment.amount || 0);
+        if (card) {
+          const restored = FinanceGameplay.reverseCreditCardPayment(card, payment);
+          card.currentBalance = restored.currentBalance;
+          if (card.statementBalance != null) card.statementBalance = restored.statementBalance;
+          if (card.minimumPayment != null) card.minimumPayment = restored.minimumPayment;
+        }
         S.cardPayments = S.cardPayments.filter((entry) => entry.id !== payment.id);
         invalidateReview(payment.dateKey);
         save(); renderAll();
@@ -2864,20 +2928,88 @@ function closeCardPaymentForm() {
   $('card-payment-mask').classList.add('hidden');
 }
 
+function updateCardPaymentHint() {
+  const card = S.creditCards.find((item) => item.id === $('card-payment-id').value);
+  if (!card) return;
+  const statement = creditStatementModel(card);
+  const amount = Number($('card-payment-amount').value);
+  const hint = $('card-payment-hint');
+  if (!(amount > 0)) {
+    hint.className = 'card-payment-hint';
+    hint.textContent = '選擇今次實際還款金額。';
+    return;
+  }
+  if (amount > statement.currentBalance) {
+    hint.className = 'card-payment-hint warning';
+    hint.textContent = `最多可記 ${fmt(statement.currentBalance)}，請核對實際結欠。`;
+    return;
+  }
+  if (!statement.statementKnown) {
+    hint.className = 'card-payment-hint info';
+    hint.textContent = `會將目前結欠減至 ${fmt(statement.currentBalance - amount)}；今期帳單未補資料，暫時無法判斷有冇達最低還款。`;
+    return;
+  }
+  if (amount >= statement.statementDue) {
+    const post = Math.max(0, statement.currentBalance - amount);
+    hint.className = 'card-payment-hint success';
+    hint.textContent = post > 0
+      ? `今期帳單會清零，仍保留 ${fmt(post)} 截數後簽帳。`
+      : '今期帳單同目前已記結欠都會清零。';
+    return;
+  }
+  if (statement.minimumKnown && statement.minimumDue > 0 && amount < statement.minimumDue) {
+    hint.className = 'card-payment-hint warning';
+    hint.textContent = `仍低過已記最低還款 ${fmt(statement.minimumDue)}；請以發卡行最新帳單為準。`;
+    return;
+  }
+  if (statement.minimumKnown && amount >= statement.minimumDue) {
+    hint.className = 'card-payment-hint info';
+    hint.textContent = `會達到已記最低還款，但今期仍欠 ${fmt(statement.statementDue - amount)}，一般可能產生利息。`;
+    return;
+  }
+  hint.className = 'card-payment-hint info';
+  hint.textContent = `今期帳單會剩低 ${fmt(statement.statementDue - amount)}；最低還款資料未完整。`;
+}
+
 function openCardPaymentForm(cardId) {
   const card = S.creditCards.find((item) => item.id === cardId);
   if (!card || !(Number(card.currentBalance || 0) > 0)) {
     toast('呢張卡暫時冇已記結欠');
     return;
   }
-  const balance = Math.round((Number(card.currentBalance || 0) + Number.EPSILON) * 100) / 100;
+  const statement = creditStatementModel(card);
+  const balance = statement.currentBalance;
   $('card-payment-form').reset();
   $('card-payment-id').value = card.id;
   $('card-payment-title').textContent = `${card.name} 還款`;
-  $('card-payment-balance').textContent = fmt(balance);
+  $('card-payment-focus-label').textContent = statement.statementKnown ? '今期尚欠' : '帳單待補 · 暫以目前結欠';
+  $('card-payment-balance').textContent = fmt(statement.statementDue);
+  $('card-payment-current').textContent = fmt(statement.currentBalance);
+  $('card-payment-post').textContent = statement.statementKnown ? fmt(statement.postStatementSpend) : '待補資料';
   $('card-payment-amount').max = String(balance);
   $('card-payment-date').value = todayKey();
   $('card-payment-date').max = todayKey();
+  const presetValues = {
+    statement: statement.statementKnown && statement.statementDue > 0 ? statement.statementDue : null,
+    minimum: statement.minimumKnown && statement.minimumDue > 0 ? statement.minimumDue : null,
+    current: statement.currentBalance,
+  };
+  const usedValues = new Set();
+  $('card-payment-presets').querySelectorAll('[data-card-payment-preset]').forEach((button) => {
+    const value = presetValues[button.dataset.cardPaymentPreset];
+    const key = value == null ? '' : Number(value).toFixed(2);
+    const duplicate = !key || usedValues.has(key);
+    button.classList.toggle('hidden', duplicate);
+    button.dataset.amount = duplicate ? '' : String(value);
+    button.setAttribute('aria-pressed', 'false');
+    if (!duplicate) usedValues.add(key);
+  });
+  const suggested = statement.statementKnown && statement.statementDue > 0 ? statement.statementDue : statement.currentBalance;
+  $('card-payment-amount').value = suggested;
+  $('card-payment-presets').querySelectorAll('[data-card-payment-preset]:not(.hidden)').forEach((button) => {
+    button.setAttribute('aria-pressed', Number(button.dataset.amount) === suggested ? 'true' : 'false');
+  });
+  updateCardPaymentHint();
   $('card-payment-mask').classList.remove('hidden');
   setTimeout(() => $('card-payment-amount').focus(), 80);
 }
@@ -2887,13 +3019,25 @@ function saveCardPaymentForm(event) {
   const card = S.creditCards.find((item) => item.id === $('card-payment-id').value);
   const amount = Math.round((Number($('card-payment-amount').value) + Number.EPSILON) * 100) / 100;
   const dateKey = $('card-payment-date').value;
-  const balance = card ? Number(card.currentBalance || 0) : 0;
+  const balance = card ? creditStatementModel(card).currentBalance : 0;
   if (!card || !(amount > 0) || amount > balance || !/^\d{4}-\d{2}-\d{2}$/.test(dateKey) || dateKey > todayKey()) {
     toast('請檢查還款金額同日期');
     return;
   }
-  card.currentBalance = Math.round((Math.max(0, balance - amount) + Number.EPSILON) * 100) / 100;
-  S.cardPayments.push({ id: `cardpay-${Date.now()}-${Math.floor(Math.random() * 10000)}`, cardId: card.id, amount, dateKey, ts: Date.now() });
+  const before = creditStatementModel(card);
+  const result = FinanceGameplay.applyCreditCardPayment(card, amount);
+  card.currentBalance = result.currentBalance;
+  if (before.statementKnown) card.statementBalance = result.statementBalance;
+  if (before.minimumKnown) card.minimumPayment = result.minimumPayment;
+  S.cardPayments.push({
+    id: `cardpay-${Date.now()}-${Math.floor(Math.random() * 10000)}`,
+    cardId: card.id,
+    amount: result.payment,
+    ...(before.statementKnown ? { statementApplied: result.statementApplied } : {}),
+    ...(before.minimumKnown ? { minimumApplied: result.minimumApplied } : {}),
+    dateKey,
+    ts: Date.now(),
+  });
   if (dateKey === todayKey()) {
     invalidateReview(dateKey);
     touchStreak();
@@ -2916,6 +3060,9 @@ function openCardForm(cardId) {
     $('card-last4').value = card.last4 || '';
     $('card-limit').value = card.creditLimit == null ? '' : card.creditLimit;
     $('card-balance').value = Number(card.currentBalance || 0);
+    $('card-statement-balance').value = card.statementBalance == null ? '' : Number(card.statementBalance || 0);
+    $('card-minimum-payment').value = card.minimumPayment == null ? '' : Number(card.minimumPayment || 0);
+    $('card-statement-due-date').value = card.statementDueDate || '';
     $('card-statement-day').value = card.statementDay || '';
     $('card-due-day').value = card.dueDay || '';
     $('card-apr').value = card.annualRate == null ? '' : card.annualRate;
@@ -2938,17 +3085,38 @@ function saveCardForm(event) {
   const existing = id ? S.creditCards.find((item) => item.id === id) : null;
   const creditLimitValue = $('card-limit').value;
   const annualRateValue = $('card-apr').value;
+  const statementBalanceValue = $('card-statement-balance').value;
+  const minimumPaymentValue = $('card-minimum-payment').value;
+  const statementDueDate = $('card-statement-due-date').value;
   const data = {
     name: $('card-name').value.trim().slice(0, 24),
     last4: last4 || null,
     creditLimit: creditLimitValue === '' ? null : Number(creditLimitValue),
     currentBalance: Number($('card-balance').value),
+    statementBalance: statementBalanceValue === '' ? null : Number(statementBalanceValue),
+    minimumPayment: minimumPaymentValue === '' ? null : Number(minimumPaymentValue),
+    statementDueDate: statementDueDate || null,
     statementDay: Number($('card-statement-day').value),
     dueDay: Number($('card-due-day').value),
     annualRate: annualRateValue === '' ? null : Number(annualRateValue),
   };
   if (!data.name || data.currentBalance < 0 || data.statementDay < 1 || data.statementDay > 31 || data.dueDay < 1 || data.dueDay > 31) {
     toast('請檢查信用卡資料');
+    return;
+  }
+  if (data.statementBalance != null && (data.statementBalance < 0 || data.statementBalance > data.currentBalance)) {
+    toast('今期帳單唔可以高過目前總結欠');
+    $('card-statement-balance').focus();
+    return;
+  }
+  if (data.minimumPayment != null && (data.statementBalance == null || data.minimumPayment < 0 || data.minimumPayment > data.statementBalance)) {
+    toast('最低還款要介乎 0 同今期帳單之間');
+    $('card-minimum-payment').focus();
+    return;
+  }
+  if (data.statementBalance > 0 && !/^\d{4}-\d{2}-\d{2}$/.test(String(data.statementDueDate || ''))) {
+    toast('有今期帳單結欠時，請填今期實際到期日');
+    $('card-statement-due-date').focus();
     return;
   }
   if (existing) {
@@ -3440,6 +3608,20 @@ function init() {
   $('card-payment-form').onsubmit = saveCardPaymentForm;
   $('card-payment-close').onclick = closeCardPaymentForm;
   $('card-payment-cancel').onclick = closeCardPaymentForm;
+  $('card-payment-amount').oninput = () => {
+    const amount = Number($('card-payment-amount').value);
+    $('card-payment-presets').querySelectorAll('[data-card-payment-preset]').forEach((button) => {
+      button.setAttribute('aria-pressed', button.dataset.amount !== '' && Number(button.dataset.amount) === amount ? 'true' : 'false');
+    });
+    updateCardPaymentHint();
+  };
+  $('card-payment-presets').querySelectorAll('[data-card-payment-preset]').forEach((button) => {
+    button.onclick = () => {
+      if (!button.dataset.amount) return;
+      $('card-payment-amount').value = button.dataset.amount;
+      $('card-payment-amount').dispatchEvent(new Event('input'));
+    };
+  });
   $('card-payment-mask').onclick = (event) => { if (event.target === $('card-payment-mask')) closeCardPaymentForm(); };
   $('btn-nospend').onclick = markNoSpend;
   $('expedition-claim').onclick = claimExpeditionBonus;

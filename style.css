@@ -611,6 +611,17 @@ body[data-period="night"] .scene-sky {
 .payment-balance { display: flex; align-items: baseline; justify-content: space-between; gap: 14px; margin-top: 13px; padding: 12px; border-left: 4px solid var(--sky-deep); background: #eff8fa; }
 .payment-balance span { color: var(--dim); font-size: 10px; font-weight: 800; }
 .payment-balance b { color: var(--ink); font-size: 17px; }
+.card-payment-summary { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; margin: 8px 2px 0; }
+.card-payment-summary > div { min-width: 0; padding: 8px 9px; border: 1px solid var(--line); background: #f8fbfa; }
+.card-payment-summary span, .card-payment-summary b { display: block; }
+.card-payment-summary span { color: var(--dim); font-size: 9px; font-weight: 800; }
+.card-payment-summary b { margin-top: 2px; overflow-wrap: anywhere; color: var(--ink); font-size: 12px; }
+.card-payment-presets { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; margin: 11px 2px 0; }
+.card-payment-presets button { min-width: 0; min-height: 46px; padding: 6px; border: 1px solid #a9c8c2; border-bottom-width: 3px; border-radius: var(--radius); background: #fff; color: var(--ink-soft); font-size: 9px; font-weight: 900; line-height: 1.25; }
+.card-payment-presets button[aria-pressed="true"] { border-color: var(--leaf-deep); background: #e8f5ec; color: var(--leaf-deep); }
+.card-payment-hint { min-height: 43px; margin: 0 2px 9px; padding: 8px 9px; border-left: 3px solid #8eb3b7; background: #f1f8f8; color: var(--ink-soft); font-size: 10px; font-weight: 700; line-height: 1.4; }
+.card-payment-hint.success { border-color: var(--leaf-deep); background: #edf8f0; }
+.card-payment-hint.warning { border-color: var(--coral); background: #fff2ef; color: #9d4b42; }
 .payment-form-grid { padding-bottom: 8px; }
 .form-note { margin: 0 2px 13px; color: var(--dim); font-size: 10px; line-height: 1.5; }
 .entry-edit-grid { padding-bottom: 10px; }
@@ -1362,10 +1373,12 @@ body[data-period="night"] .scene-sky {
 .credit-next b { color: var(--leaf-deep); font-size: 11px; }
 .credit-next.urgent { background: #fff0ed; }
 .credit-next.urgent b { color: #b44f43; }
-.credit-metrics { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 7px; margin-top: 11px; }
+.credit-metrics { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px 7px; margin-top: 11px; }
 .credit-metrics > div { min-width: 0; padding: 7px 5px; border-top: 1px solid var(--line); }
 .credit-metrics span { display: block; color: var(--dim); font-size: 9px; }
 .credit-metrics b { display: block; margin-top: 2px; overflow-wrap: anywhere; color: var(--ink); font-size: 11px; }
+.credit-statement-note { margin-top: 7px; padding: 7px 8px; border-left: 3px solid var(--sky-deep); background: #f0f8fa; color: var(--ink-soft); font-size: 9px; font-weight: 800; line-height: 1.4; }
+.credit-cycle { margin-top: 6px; color: var(--dim); font-size: 9px; }
 .credit-util { display: grid; grid-template-columns: 1fr auto; gap: 4px 8px; margin-top: 7px; color: var(--dim); font-size: 10px; }
 .credit-util > div { grid-column: 1 / -1; height: 7px; overflow: hidden; border-radius: 5px; background: #e0ebe8; }
 .credit-util i { display: block; height: 100%; border-radius: inherit; background: var(--coral); }
