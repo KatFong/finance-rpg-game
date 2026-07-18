@@ -5,6 +5,7 @@ const assert = require('node:assert/strict');
 const {
   buildInstallmentSchedule,
   localAdvisorTurn,
+  monthCommitments,
   monthReserved,
 } = require('../advisor.js');
 
@@ -62,6 +63,7 @@ test('reserves only unpaid installments in the selected month', () => {
     ] }],
   };
   assert.equal(monthReserved(state, '2026-07'), 120);
+  assert.equal(monthCommitments(state, '2026-07'), 200);
 });
 
 test('turns a complete Cantonese installment message into a draft', () => {
@@ -104,6 +106,25 @@ test('recognizes a supermarket purchase as food and groceries', () => {
   assert.equal(result.draft.kind, 'expense');
   assert.equal(result.draft.category, 'food');
   assert.equal(result.draft.amount, 248);
+  assert.equal(result.draft.budgetImpact, 'daily');
+});
+
+test('keeps rent visible but outside the daily allowance', () => {
+  const result = localAdvisorTurn([
+    { role: 'user', content: '幫我記屋租 $12000' },
+  ], context);
+  assert.equal(result.status, 'draft');
+  assert.equal(result.draft.kind, 'expense');
+  assert.equal(result.draft.category, 'bills');
+  assert.equal(result.draft.budgetImpact, 'committed');
+});
+
+test('does not exclude an ordinary purchase merely because it is large', () => {
+  const result = localAdvisorTurn([
+    { role: 'user', content: '買電腦 $18000' },
+  ], context);
+  assert.equal(result.status, 'draft');
+  assert.equal(result.draft.budgetImpact, 'daily');
 });
 
 test('turns a salary message into an income draft', () => {

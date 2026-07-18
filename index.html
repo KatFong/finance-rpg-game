@@ -9,7 +9,7 @@
 <title>理財勇者</title>
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="assets/hero.png">
-<link rel="stylesheet" href="style.css?v=19">
+<link rel="stylesheet" href="style.css?v=20">
 </head>
 <body>
 
@@ -31,7 +31,7 @@
     </div>
 
     <div class="today-command" id="today-command">
-      <div class="command-kicker"><span>今日可安心使用</span><b id="budget-status">等待第一步</b></div>
+      <div class="command-kicker"><span>今日日常可安心使用</span><b id="budget-status">等待第一步</b></div>
       <div class="command-amount"><strong id="today-safe-amount">$0</strong><span id="today-spent-copy">今日未記帳</span></div>
       <div class="hpbar hero-hp"><div id="hero-hpfill"></div><span id="hero-hptext"></span></div>
       <p class="hero-sub" id="hero-sub"></p>
@@ -132,7 +132,7 @@
     <div class="stat-summary" id="stat-summary"></div>
     <h3 class="sec-sub">資產負債（勇者屬性）</h3>
     <div class="stat-summary three" id="bs-summary"></div>
-    <h3 class="sec-sub">最近 7 日開支</h3>
+    <h3 class="sec-sub">最近 7 日日常消費</h3>
     <div class="chart7" id="chart7"></div>
     <h3 class="sec-sub">本月分類開支</h3>
     <div id="cat-bars"></div>
@@ -176,6 +176,14 @@
     <div id="log-cats" class="cat-grid"></div>
     <div id="log-amount" class="hidden">
       <div class="amount-display"><span class="cur">$</span><span id="amt-text">0</span></div>
+      <div class="budget-impact hidden" id="log-budget-impact">
+        <div class="budget-impact-head"><b>計入邊個預算？</b><span>可以之後喺手帳分辨</span></div>
+        <div class="impact-segments" role="group" aria-label="支出預算分類">
+          <button class="active" type="button" data-budget-impact="daily" aria-pressed="true">日常安心額</button>
+          <button type="button" data-budget-impact="committed" aria-pressed="false">固定／預留</button>
+        </div>
+        <p id="log-impact-hint">會扣減今日安心額，適合餐飲、交通同一般購物。</p>
+      </div>
       <div class="numpad" id="numpad"></div>
       <button class="btn primary big" id="btn-log-save">確認</button>
     </div>
@@ -357,7 +365,7 @@
       <span class="ob-quest-label">主線任務 01 · 訂立契約</span>
       <h3>最後，一齊定今次旅程節奏</h3>
       <p class="tip" id="ob-budget-tip"></p>
-      <label>預算（HK$）<input id="ob-budget" type="number" inputmode="numeric" placeholder="例如 8000"></label>
+      <label>每月日常可用預算（HK$）<input id="ob-budget" type="number" inputmode="numeric" placeholder="例如 8000"></label>
       <label>每週儲蓄目標（用嚟打魔王）</label>
       <div class="chips" id="ob-rate">
         <button class="chip" data-rate="0.1">預算嘅 10%</button>
@@ -372,7 +380,7 @@
 <div id="toast" class="hidden"></div>
 
 <script>window.FRPG_CONFIG = { advisorApiUrl: '' };</script>
-<script src="advisor.js?v=19"></script>
-<script src="app.js?v=19"></script>
+<script src="advisor.js?v=20"></script>
+<script src="app.js?v=20"></script>
 </body>
 </html>

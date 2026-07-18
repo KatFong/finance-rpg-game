@@ -143,11 +143,19 @@
     }, 0));
   }
 
+  function monthCommitments(state, monthPrefix) {
+    return roundMoney((state.installments || []).reduce((total, plan) => (
+      total + (plan.schedule || []).reduce((sum, payment) => (
+        payment.dueDate.startsWith(monthPrefix) ? sum + payment.amount : sum
+      ), 0)
+    ), 0));
+  }
+
   function emptyResult(reply) {
     return {
       status: 'answer', reply: reply || '', question: '', missingFields: [], confidence: 0.5,
       draft: {
-        kind: 'none', amount: null, category: null, date: null, merchant: null,
+        kind: 'none', amount: null, category: null, date: null, merchant: null, budgetImpact: null,
         intent: null, cardId: null, cardName: null, last4: null, creditLimit: null,
         currentBalance: null, statementDay: null, dueDay: null, annualRate: null,
         title: null, principal: null, termMonths: null, paidMonths: null,
@@ -161,8 +169,14 @@
     if (/車|巴士|地鐵|港鐵|的士|交通|油費|泊車|八達通|uber/i.test(text)) return 'transport';
     if (/買|購物|衫|鞋|電器|電腦|手機|網購|淘寶|amazon/i.test(text)) return 'shopping';
     if (/戲|遊戲|娛樂|旅行|唱K|演唱會|netflix|spotify/i.test(text)) return 'fun';
-    if (/帳單|水費|電費|煤氣|電話|上網|月費|供款|分期|租金|管理費|保險/.test(text)) return 'bills';
+    if (/帳單|水費|電費|煤氣|電話|上網|月費|供款|分期|屋租|租金|差餉|管理費|保險|學費|稅款/.test(text)) return 'bills';
     return 'other';
+  }
+
+  function detectBudgetImpact(text) {
+    return /屋租|租金|差餉|管理費|保險|學費|交稅|稅款|供款|固定支出|固定開支|已預留|預留支出|一次性|用儲蓄|由存款/.test(text)
+      ? 'committed'
+      : 'daily';
   }
 
   function extractMoney(text) {
@@ -331,13 +345,16 @@
         return result;
       }
       const category = detectCategory(last);
+      const budgetImpact = detectBudgetImpact(last);
       const merchant = last.replace(/(?:HKD|HK\$|\$)?\s*[\d,]+(?:\.\d+)?\s*(?:蚊|元|港幣)?/gi, '').trim();
       result.status = 'draft';
       result.confidence = category === 'other' ? 0.72 : 0.9;
-      result.reply = '我整理成一筆支出卷軸。你確認分類同金額，我先寫入冒險手帳。';
+      result.reply = budgetImpact === 'committed'
+        ? '我整理成固定／預留支出，會留喺總支出，但唔會一筆扣爆今日安心額。'
+        : '我整理成一筆日常支出卷軸。你確認分類同金額，我先寫入冒險手帳。';
       result.draft = Object.assign(result.draft, {
         kind: 'expense', amount, category, date: today, merchant: merchant || null,
-        intent: null, cardId: cardRef.cardId,
+        intent: null, cardId: cardRef.cardId, budgetImpact,
       });
       return result;
     }
@@ -401,6 +418,7 @@
           ['金額', fmt(draft.amount)], ['分類', CATEGORY_NAMES[draft.category] || '其他'],
           ['日期', draft.date || bridge.today()], ['商戶／備註', draft.merchant || '未填'],
           ['付款入口', card ? card.name : '一般支出'],
+          ['安心額度', draft.budgetImpact === 'committed' ? '固定／預留 · 不扣今日' : '日常 · 扣今日'],
         ],
       };
     }
@@ -509,7 +527,7 @@
       const recorded = bridge.recordExpense(draft.category || 'other', Number(draft.amount), {
         dateKey: draft.date || bridge.today(), merchant: draft.merchant || null,
         cardId: draft.cardId || null, intent: draft.intent || null,
-        source: 'advisor', skipDialogue: true,
+        source: 'advisor', budgetImpact: draft.budgetImpact || 'daily', skipDialogue: true,
       });
       if (!recorded) return;
       confirmation = `${fmt(draft.amount)} 已經寫入冒險手帳。`;
@@ -682,7 +700,7 @@
       dateKey: bridge.today(), merchant: `${plan.title} 第 ${payment.index + 1} 期`,
       cardId: plan.cardId, installmentId: plan.id, intent: 'need',
       installmentPaymentIndex: payment.index,
-      source: 'installment', skipDialogue: true,
+      source: 'installment', budgetImpact: 'committed', skipDialogue: true,
     });
     if (!recorded) {
       payment.status = 'planned';
@@ -825,7 +843,7 @@
   }
 
   return {
-    init, open, close, render, monthReserved, buildInstallmentSchedule,
+    init, open, close, render, monthReserved, monthCommitments, buildInstallmentSchedule,
     localAdvisorTurn, normalizeDateKey, addMonths,
   };
 });

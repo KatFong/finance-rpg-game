@@ -15,7 +15,7 @@ const RESPONSE_SCHEMA = {
       type: 'object',
       additionalProperties: false,
       required: [
-        'kind', 'amount', 'category', 'date', 'merchant', 'intent', 'cardId', 'cardName',
+        'kind', 'amount', 'category', 'date', 'merchant', 'budgetImpact', 'intent', 'cardId', 'cardName',
         'last4', 'creditLimit', 'currentBalance', 'statementDay', 'dueDay', 'annualRate',
         'title', 'principal', 'termMonths', 'paidMonths', 'monthlyPayment', 'monthlyFee',
         'firstDueDate',
@@ -26,6 +26,7 @@ const RESPONSE_SCHEMA = {
         category: { type: ['string', 'null'], enum: ['food', 'transport', 'shopping', 'fun', 'bills', 'other', null] },
         date: { type: ['string', 'null'] },
         merchant: { type: ['string', 'null'] },
+        budgetImpact: { type: ['string', 'null'], enum: ['daily', 'committed', null] },
         intent: { type: ['string', 'null'], enum: ['need', 'joy', 'impulse', null] },
         cardId: { type: ['string', 'null'] },
         cardName: { type: ['string', 'null'] },
@@ -54,12 +55,12 @@ Reply in concise written Cantonese using Traditional Chinese. Be warm and non-ju
 Rules:
 1. Never invent an amount, date, card, interest rate, installment term, fee, payment, statement day, or due day.
 2. If required financial data is unclear, set status=clarify, kind=none, list missingFields, and ask one focused follow-up question.
-3. For an expense, amount is required. Infer category only when reasonably clear; otherwise use other. Date defaults to context.today.
+3. For an expense, amount is required. Infer category only when reasonably clear; otherwise use other. Date defaults to context.today. Set budgetImpact=daily for ordinary day-to-day spending. Set budgetImpact=committed for rent, rates, management fees, insurance, tuition, tax, scheduled repayments, or an expense the user explicitly says is fixed, pre-reserved, one-off from savings, or should not reduce today's allowance. Never classify something as committed merely because its amount is large; ask one focused follow-up when the source of funds is unclear.
 4. For income, amount is required, date defaults to context.today, and merchant stores the income source such as salary, freelance, bonus, or refund.
 5. For a credit card, cardName, currentBalance (including an explicit zero), statementDay, dueDay, and either annualRate or an explicit statement that the rate is unknown are required. last4 and creditLimit are optional.
 6. For an installment, card identity, title, principal, termMonths, firstDueDate, and at least one financing basis are required. Financing basis means quoted monthlyPayment, annualRate, explicit 0% interest, or monthlyFee. Never calculate the schedule yourself.
 7. Match cardId only from context.cards. When the user names a new card during installment setup, leave cardId null and preserve cardName.
-8. A repayment or installment payment is not a new purchase. For a payment toward an existing card balance, use kind=card_payment with amount, date, and a cardId from context. Do not classify it as an expense.
+8. A repayment or installment payment is not a new purchase. For a payment toward an existing card balance, use kind=card_payment with amount, date, and a cardId from context. Do not classify it as an expense or reduce today's allowance.
 9. If the user asks a general finance or investment question, use status=answer and kind=none. Explain principles, and ask about goals, time horizon, and risk tolerance when relevant. Do not recommend a specific product or promise returns.
 10. Use status=draft only when the draft can be safely shown for user confirmation. The application performs deterministic calculations and requires a final tap before saving.
 11. Do not provide personalized investment, lending, legal, or tax advice.`;

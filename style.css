@@ -606,6 +606,7 @@ body[data-period="night"] .scene-sky {
 }
 .quick-log-btn span { overflow: hidden; font-size: 9px; font-weight: 800; text-overflow: ellipsis; white-space: nowrap; }
 .quick-log-btn b { color: var(--leaf-deep); font-size: 13px; }
+.quick-log-btn small { color: var(--berry); font-size: 8px; font-weight: 900; }
 .quick-log-btn:active { transform: translateY(2px); border-bottom-width: 1px; }
 
 .cat-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
@@ -632,6 +633,14 @@ body[data-period="night"] .scene-sky {
 .debt-btn .focus-tag { margin: 0; }
 .amount-display { margin: 5px 0 10px; color: var(--leaf-deep); text-align: center; font-size: 42px; font-weight: 900; }
 .amount-display .cur { margin-right: 4px; color: var(--dim); font-size: 22px; }
+.budget-impact { margin: 0 0 10px; padding: 10px; border: 1px solid #c8d9d5; border-radius: var(--radius); background: #f7faf9; }
+.budget-impact-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin-bottom: 7px; }
+.budget-impact-head b { color: var(--ink); font-size: 10px; }
+.budget-impact-head span { color: var(--dim); font-size: 8px; }
+.impact-segments { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 5px; }
+.impact-segments button { min-height: 38px; padding: 7px; border: 1px solid #bdd3ce; border-bottom-width: 3px; border-radius: var(--radius); background: #fff; color: var(--dim); font-size: 10px; font-weight: 900; cursor: pointer; }
+.impact-segments button.active { border-color: var(--leaf-deep); background: #e5f3e8; color: #2d7248; }
+.budget-impact p { margin-top: 6px; color: var(--dim); font-size: 8px; line-height: 1.4; }
 .numpad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 7px; margin-bottom: 10px; }
 .numpad button { min-height: 50px; border: 1px solid #c4d8d4; border-bottom-width: 3px; border-radius: var(--radius); background: #fff; color: var(--ink); font-size: 20px; font-weight: 800; cursor: pointer; }
 .numpad button:active { transform: translateY(2px); border-bottom-width: 1px; background: #eef7f2; }
@@ -820,12 +829,16 @@ body[data-period="night"] .scene-sky {
 .log-row { min-height: 48px; display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 7px; padding: 8px 10px; font-size: 11px; }
 .log-amount { display: flex; align-items: center; gap: 7px; }
 .log-delete { width: 36px; height: 36px; color: #9b5a55; }
+.log-delete.impact-edit { color: var(--sky-deep); }
 .lr-cat { color: var(--ink); font-weight: 900; }
 .lr-date { margin-left: 6px; color: var(--dim); font-size: 9px; }
 .intent-tag { display: inline-block; margin: 3px 0 0 6px; padding: 2px 5px; border-radius: 7px; background: #e7f2ec; color: var(--leaf-deep); font-size: 8px; font-weight: 900; }
 .lr-amt { color: var(--coral); font-weight: 900; }
 .lr-amt.income { color: var(--leaf-deep); }
+.lr-amt.transfer { color: var(--sky-deep); }
 .income-tag { border-color: #9acbab; background: #e8f5eb; color: var(--leaf-deep); }
+.committed-tag { background: #fff2cf; color: #8b661b; }
+.transfer-tag { background: #e7f3f5; color: var(--sky-deep); }
 
 /* ===== Conversational onboarding ===== */
 .welcome-mask { align-items: stretch; padding: 0; background: #315f68; backdrop-filter: none; }

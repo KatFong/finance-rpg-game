@@ -49,7 +49,7 @@ const defaults = () => ({
   gold: 0, xp: 0, level: 1,
   streak: 0, lastLogDate: null,
   items: { sword: 0, charm: 0, shield: 0, cape: 0 },
-  expenses: [],            // {id, ts, dateKey, cat, amount, intent?}
+  expenses: [],            // {id, ts, dateKey, cat, amount, budgetImpact:'daily'|'committed', intent?}
   dayMeta: {},             // dateKey -> {chests, noSpend, questsClaimed:[]}
   boss: { weekKey: null, claimed: false },
 });
@@ -91,18 +91,30 @@ const bossMaxHp = () => Math.max(1, Math.round(weeklyBudget() * S.saveRate));
 const swordMult = () => (S.items.sword ? 1.15 : 1);
 const chestChance = () => 0.3 + (S.items.charm ? 0.1 : 0);
 
+function expenseBudgetImpact(expense) {
+  if (expense && expense.budgetImpact === 'committed') return 'committed';
+  if (expense && expense.source === 'installment') return 'committed';
+  return 'daily';
+}
 function daySpend(k) {
-  return S.expenses.reduce((s, e) => s + (e.dateKey === k ? e.amount : 0), 0);
+  return S.expenses.reduce((sum, expense) => (
+    expense.dateKey === k && expenseBudgetImpact(expense) === 'daily' ? sum + expense.amount : sum
+  ), 0);
+}
+function dayCommittedSpend(k) {
+  return S.expenses.reduce((sum, expense) => (
+    expense.dateKey === k && expenseBudgetImpact(expense) === 'committed' ? sum + expense.amount : sum
+  ), 0);
 }
 function safeToSpendToday() {
   const now = new Date();
   const mk = monthKey();
-  const reservedInstallments = window.FinanceAdvisor ? FinanceAdvisor.monthReserved(S, mk) : 0;
-  const base = Math.max(0, Math.round((S.monthlyBudget - reservedInstallments) / 30));
+  const scheduledCommitments = window.FinanceAdvisor ? FinanceAdvisor.monthCommitments(S, mk) : 0;
+  const base = Math.max(0, Math.round(S.monthlyBudget / 30));
   const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
   const daysLeft = daysInMonth - now.getDate() + 1;
   const spentBeforeToday = S.expenses.reduce((sum, expense) => (
-    expense.dateKey.startsWith(mk) && expense.dateKey < todayKey() ? sum + expense.amount : sum
+    expense.dateKey.startsWith(mk) && expense.dateKey < todayKey() && expenseBudgetImpact(expense) === 'daily' ? sum + expense.amount : sum
   ), 0);
   const priorActiveDays = new Set(S.expenses
     .filter((expense) => expense.dateKey.startsWith(mk) && expense.dateKey < todayKey())
@@ -110,11 +122,11 @@ function safeToSpendToday() {
   Object.keys(S.dayMeta).forEach((key) => {
     if (key.startsWith(mk) && key < todayKey() && S.dayMeta[key].noSpend) priorActiveDays.add(key);
   });
-  const remainingMonth = Math.max(0, S.monthlyBudget - spentBeforeToday - reservedInstallments);
+  const remainingMonth = Math.max(0, S.monthlyBudget - spentBeforeToday);
   const rawSafe = Math.max(0, Math.round(remainingMonth / Math.max(1, daysLeft)));
   const calibrated = priorActiveDays.size > 0;
   const safe = calibrated ? Math.min(rawSafe, Math.round(base * 1.25)) : base;
-  return { safe, base, rawSafe, calibrated, remainingMonth, daysLeft, spentBeforeToday, reservedInstallments };
+  return { safe, base, rawSafe, calibrated, remainingMonth, daysLeft, spentBeforeToday, scheduledCommitments };
 }
 function dayActive(k) {
   return (S.dayMeta[k] && S.dayMeta[k].noSpend) || S.expenses.some((e) => e.dateKey === k);
@@ -137,6 +149,7 @@ function bossDamage() {
 }
 function xpNeed(l) { return Math.round(100 * Math.pow(l, 1.3)); }
 function logsToday() { return S.expenses.filter((e) => e.dateKey === todayKey()).length; }
+function dailyLogsToday() { return S.expenses.filter((e) => e.dateKey === todayKey() && expenseBudgetImpact(e) === 'daily').length; }
 function totalDebt() { return S.debts.reduce((s, d) => s + d.balance, 0); }
 function liveDebts() { return S.debts.filter((d) => d.balance > 0); }
 // 雪球還債法：由最細餘額嗰條開始
@@ -315,16 +328,18 @@ function showAdviceDialogue() {
 function showStatusDialogue() {
   activeDialogueKey = 'status';
   const spent = daySpend(todayKey());
+  const committed = dayCommittedSpend(todayKey());
   const pace = safeToSpendToday();
   const left = pace.safe - spent;
   const dmg = bossDamage();
   const max = bossMaxHp();
-  const reserveNote = pace.reservedInstallments > 0 ? `本月分期已先留起 ${fmt(pace.reservedInstallments)}。` : '';
+  const commitmentNote = pace.scheduledCommitments > 0 ? `本月另有 ${fmt(pace.scheduledCommitments)} 分期承諾，會獨立顯示。` : '';
   const paceBasis = pace.calibrated
-    ? `${reserveNote}呢個數已按本月剩餘 ${fmt(pace.remainingMonth)} 同 ${pace.daysLeft} 日路程調整。`
-    : `${reserveNote}暫時先用每日平均 ${fmt(pace.base)}；有一日完整紀錄後，我先開始校準。`;
+    ? `${commitmentNote}呢個數已按日常預算剩餘 ${fmt(pace.remainingMonth)} 同 ${pace.daysLeft} 日路程調整。`
+    : `${commitmentNote}暫時先用日常預算每日平均 ${fmt(pace.base)}；有一日完整紀錄後，我先開始校準。`;
+  const committedNote = committed > 0 ? `今日另記咗 ${fmt(committed)} 固定／預留支出，冇扣日常額度。` : '';
   const text = left >= 0
-    ? `今日記咗 ${logsToday()} 筆，仲有 ${fmt(left)} 可以安心使用。${paceBasis}本週對魔王造成咗 ${fmt(dmg)} 傷害。`
+    ? `今日記咗 ${logsToday()} 筆，仲有 ${fmt(left)} 日常安心額。${committedNote}${paceBasis}本週對魔王造成咗 ${fmt(dmg)} 傷害。`
     : `今日記咗 ${logsToday()} 筆，暫時比安心額度多 ${fmt(Math.abs(left))}。唔需要懲罰自己，我哋已經知道情況，之後每一筆都可以重新選擇。`;
   speak('錢錢軍師', text, [
     { label: '記一筆', primary: true, action: () => openLogSheet('expense') },
@@ -350,7 +365,7 @@ function renderSceneDialogue(force) {
   } else if (!active && returning) {
     text = `${period.greeting}，${S.heroName}，歡迎返嚟。唔使補晒之前日子，過去努力亦冇消失；今日記一筆，就可以由而家重新開始。`;
   } else if (!active) {
-    text = `${period.greeting}，${S.heroName}。今日有 ${fmt(pace.safe)} 可以安心使用。記低第一筆；累積一日完整紀錄後，我會按本月餘額幫你校準步速。`;
+    text = `${period.greeting}，${S.heroName}。今日有 ${fmt(pace.safe)} 日常安心額。固定承諾會另行記錄，唔會一筆打亂今日節奏。`;
   } else if (spent > pace.safe) {
     text = `今日已經用過安心額度。記帳唔係審判；肯望清楚發生咗咩，就已經停止咗逃避，下一筆仍然有選擇。`;
   } else if (logsToday() < 3) {
@@ -509,16 +524,17 @@ function openChest() {
 }
 
 /* ===================== 記帳 / 還債 sheet ===================== */
-let selCat = null, amtStr = '0', sheetMode = 'expense';
+let selCat = null, amtStr = '0', sheetMode = 'expense', sheetBudgetImpact = 'daily';
 function openLogSheet(mode) {
   sheetMode = mode || 'expense';
-  selCat = null; amtStr = '0';
+  selCat = null; amtStr = '0'; sheetBudgetImpact = 'daily';
   $('log-step-title').textContent = sheetMode === 'repay' ? '還俾邊條惡龍？' : '今日使咗喺邊度？';
   $('log-guide').textContent = sheetMode === 'repay'
     ? '揀一條債務惡龍。我建議先集中火力打最細嗰條。'
     : '慢慢諗，今日呢筆支出屬於邊一段生活？';
   $('log-cats').classList.remove('hidden');
   $('log-amount').classList.add('hidden');
+  $('log-budget-impact').classList.add('hidden');
   renderCats();
   renderQuickLogs();
   $('log-mask').classList.remove('hidden');
@@ -535,8 +551,9 @@ function renderQuickLogs() {
   const seen = new Set();
   const recent = [...S.expenses]
     .sort((a, b) => b.ts - a.ts)
+    .filter((expense) => expense.source !== 'installment')
     .filter((expense) => {
-      const key = `${expense.cat}:${expense.amount}`;
+      const key = `${expense.cat}:${expense.amount}:${expenseBudgetImpact(expense)}`;
       if (seen.has(key)) return false;
       seen.add(key);
       return true;
@@ -545,12 +562,13 @@ function renderQuickLogs() {
   quick.classList.toggle('hidden', recent.length === 0);
   list.innerHTML = recent.map((expense) => {
     const cat = CATS.find((item) => item.id === expense.cat);
-    return `<button class="quick-log-btn" data-cat="${expense.cat}" data-amount="${expense.amount}"><span>${cat.name}</span><b>${fmt(expense.amount)}</b></button>`;
+    const impact = expenseBudgetImpact(expense);
+    return `<button class="quick-log-btn" data-cat="${expense.cat}" data-amount="${expense.amount}" data-impact="${impact}"><span>${cat.name}</span><b>${fmt(expense.amount)}</b>${impact === 'committed' ? '<small>固定／預留</small>' : ''}</button>`;
   }).join('');
   list.querySelectorAll('.quick-log-btn').forEach((button) => {
     button.onclick = () => {
       closeLogSheet();
-      if (logExpense(button.dataset.cat, Number(button.dataset.amount))) switchScreen('home');
+      if (logExpense(button.dataset.cat, Number(button.dataset.amount), { budgetImpact: button.dataset.impact })) switchScreen('home');
     };
   });
 }
@@ -575,7 +593,8 @@ function renderCats() {
       } else {
         const cat = CATS.find((c) => c.id === selCat);
         $('log-step-title').textContent = `${cat.name} — 使咗幾多？`;
-        $('log-guide').textContent = `${cat.name}，明白。輸入銀碼，我會幫你計返今日仲有幾多能量。`;
+        setSheetBudgetImpact(cat.id === 'bills' ? 'committed' : 'daily');
+        $('log-budget-impact').classList.remove('hidden');
       }
       $('log-quick').classList.add('hidden');
       $('log-cats').classList.add('hidden');
@@ -583,6 +602,23 @@ function renderCats() {
       amtStr = '0'; renderAmt();
     };
   });
+}
+function setSheetBudgetImpact(value) {
+  sheetBudgetImpact = value === 'committed' ? 'committed' : 'daily';
+  document.querySelectorAll('[data-budget-impact]').forEach((button) => {
+    const active = button.dataset.budgetImpact === sheetBudgetImpact;
+    button.classList.toggle('active', active);
+    button.setAttribute('aria-pressed', String(active));
+  });
+  $('log-impact-hint').textContent = sheetBudgetImpact === 'committed'
+    ? '屋租、供款或已由另一筆預算預留；仍會計入總支出。'
+    : '會扣減今日安心額，適合餐飲、交通同一般購物。';
+  if (sheetMode === 'expense' && selCat) {
+    const cat = CATS.find((item) => item.id === selCat);
+    $('log-guide').textContent = sheetBudgetImpact === 'committed'
+      ? `${cat.name}會獨立記錄，唔會扣減今日安心額。`
+      : `${cat.name}會計入今日節奏，我會即時更新剩餘安心額。`;
+  }
 }
 function renderAmt() { $('amt-text').textContent = Number(amtStr).toLocaleString('en-US'); }
 function numpadPress(k) {
@@ -599,31 +635,34 @@ function logExpense(cid, amount, opts) {
   const requestedDate = String(opts.dateKey || todayKey());
   const t = /^\d{4}-\d{2}-\d{2}$/.test(requestedDate) ? requestedDate : todayKey();
   const isToday = t === todayKey();
-  const first = isToday && logsToday() === 0 && !(S.dayMeta[t] && S.dayMeta[t].noSpend);
+  const budgetImpact = opts.budgetImpact === 'committed' || opts.source === 'installment' ? 'committed' : 'daily';
+  const first = isToday && budgetImpact === 'daily' && dailyLogsToday() === 0 && !(S.dayMeta[t] && S.dayMeta[t].noSpend);
   const entryId = Date.now();
   S.expenses.push({
     id: entryId, ts: entryId, dateKey: t, cat: cid, amount: Number(amount),
     merchant: opts.merchant || null, cardId: opts.cardId || null,
     installmentId: opts.installmentId || null, intent: opts.intent || null,
     installmentPaymentIndex: Number.isInteger(opts.installmentPaymentIndex) ? opts.installmentPaymentIndex : null,
-    source: opts.source || 'manual',
+    source: opts.source || 'manual', budgetImpact,
   });
   if (opts.cardId && opts.source !== 'installment') {
     const card = S.creditCards.find((item) => item.id === opts.cardId);
     if (card) card.currentBalance = Number(card.currentBalance || 0) + Number(amount);
   }
-  if (isToday && meta(t).noSpend) { meta(t).noSpend = false; toast('今日零消費標記已取消'); }
+  if (isToday && budgetImpact === 'daily' && meta(t).noSpend) { meta(t).noSpend = false; toast('今日零消費標記已取消'); }
   if (isToday) {
     touchStreak();
     gainXp(10);
   }
   save();
   renderAll();
-  toast(isToday ? `已記低 ${fmt(amount)} · XP +10` : `已補記 ${t} · ${fmt(amount)}`);
+  toast(isToday
+    ? (budgetImpact === 'committed' ? `已記低 ${fmt(amount)} · 固定／預留，不扣今日額度` : `已記低 ${fmt(amount)} · XP +10`)
+    : `已補記 ${t} · ${fmt(amount)}`);
   softVibrate([8, 30, 8]);
   if (isToday) {
     clearTimeout(pendingChestTimer);
-    if (!opts.skipDialogue && !opts.intent) {
+    if (budgetImpact === 'daily' && !opts.skipDialogue && !opts.intent) {
       setTimeout(() => showExpenseReaction(cid, amount, first, entryId), 80);
       pendingChestTimer = setTimeout(() => maybeChest(first), 12000);
     } else {
@@ -640,7 +679,7 @@ function saveSheet() {
     repayDebt(Number(selCat), amount);
   } else {
     closeLogSheet();
-    if (logExpense(selCat, amount)) switchScreen('home');
+    if (logExpense(selCat, amount, { budgetImpact: sheetBudgetImpact })) switchScreen('home');
   }
 }
 
@@ -671,7 +710,7 @@ function repayDebt(debtId, amount) {
 /* ===================== 零消費 ===================== */
 function markNoSpend() {
   const t = todayKey();
-  if (logsToday() > 0) { toast('今日已經有支出紀錄喇'); return; }
+  if (dailyLogsToday() > 0) { toast('今日已經有日常支出紀錄喇'); return; }
   if (meta(t).noSpend) { toast('今日已經標記咗零消費'); return; }
   meta(t).noSpend = true;
   touchStreak();
@@ -680,7 +719,7 @@ function markNoSpend() {
   save(); renderAll();
   softVibrate([8, 25, 8]);
   pulseScene();
-  popup('零消費達成！', `<p style="color:var(--dim);font-size:13px;line-height:1.7">勇者今日完全冇俾慾望魔王吸血！<br><b style="color:var(--gold)">+30 金幣 · +50 XP</b><br>成日嘅預算全數化為攻擊力。</p>`);
+  popup('零日常消費達成！', `<p style="color:var(--dim);font-size:13px;line-height:1.7">勇者今日冇動用日常安心額！固定承諾仍然會留喺手帳，但唔影響今次成果。<br><b style="color:var(--gold)">+30 金幣 · +50 XP</b><br>成日嘅日常預算全數化為攻擊力。</p>`);
   setTimeout(() => maybeChest(true), 400);
 }
 
@@ -689,7 +728,7 @@ function questProgress(q) {
   const t = todayKey(), m = meta(t);
   if (q.id === 'q_checkin') return dayActive(t) ? 1 : 0;
   if (q.id === 'q_log') return m.noSpend ? q.target : Math.min(q.target, logsToday());
-  if (q.id === 'q_story') return (m.noSpend || S.expenses.some((expense) => expense.dateKey === t && expense.intent)) ? 1 : 0;
+  if (q.id === 'q_story') return (m.noSpend || S.expenses.some((expense) => expense.dateKey === t && expenseBudgetImpact(expense) === 'daily' && expense.intent)) ? 1 : 0;
   return 0;
 }
 function claimQuest(qid) {
@@ -705,7 +744,7 @@ function claimQuest(qid) {
 
 function startQuest(qid) {
   if (qid === 'q_story') {
-    const expense = [...S.expenses].reverse().find((item) => item.dateKey === todayKey() && !item.intent);
+    const expense = [...S.expenses].reverse().find((item) => item.dateKey === todayKey() && expenseBudgetImpact(item) === 'daily' && !item.intent);
     if (expense) {
       switchScreen('home');
       showExpenseReaction(expense.cat, expense.amount, false, expense.id);
@@ -917,6 +956,7 @@ function renderHome() {
   $('hero-img').classList.toggle('cape', S.items.cape > 0);
   // 今日 HP
   const spent = daySpend(todayKey());
+  const committed = dayCommittedSpend(todayKey());
   const pace = safeToSpendToday();
   const rawLeft = pace.safe - spent;
   const left = Math.max(0, rawLeft);
@@ -926,10 +966,12 @@ function renderHome() {
   fill.classList.toggle('ok', pct > 40);
   $('hero-hptext').textContent = `${fmt(left)} / ${fmt(pace.safe)}`;
   $('today-safe-amount').textContent = fmt(left);
-  $('today-spent-copy').textContent = spent > 0 ? `今日已看見 ${fmt(spent)}` : '今日未有支出紀錄';
+  $('today-spent-copy').textContent = committed > 0
+    ? `日常 ${fmt(spent)} · 固定／預留 ${fmt(committed)}`
+    : (spent > 0 ? `今日日常已用 ${fmt(spent)}` : '今日未有日常支出');
   const paceShift = pace.safe - pace.base;
-  const reserveNote = pace.reservedInstallments > 0 ? `已預留本月分期 ${fmt(pace.reservedInstallments)}。` : '';
-  const paceNote = reserveNote + (!pace.calibrated
+  const commitmentNote = pace.scheduledCommitments > 0 ? `本月另列分期承諾 ${fmt(pace.scheduledCommitments)}。` : '';
+  const paceNote = commitmentNote + (!pace.calibrated
     ? '先用固定日平均，累積一個完整記錄日後開始校準'
     : paceShift < 0
     ? `按本月餘額，今日比固定平均收細 ${fmt(Math.abs(paceShift))}`
@@ -938,7 +980,7 @@ function renderHome() {
       : `按本月剩餘 ${pace.daysLeft} 日平均分配`);
   $('hero-sub').textContent = rawLeft < 0
     ? `今日比安心額度多 ${fmt(Math.abs(rawLeft))}；唔使補償，下一筆重新選擇。${paceNote}`
-    : (dayActive(todayKey()) ? `今日仲有 ${fmt(left)} 可以安心使用。${paceNote}` : `今日未記帳。可安心使用 ${fmt(pace.safe)}，第一筆有必爆寶箱。${paceNote}`);
+    : (dayActive(todayKey()) ? `今日仲有 ${fmt(left)} 日常安心額。固定／預留支出唔會喺今日再扣。${paceNote}` : `今日未記帳。日常安心額係 ${fmt(pace.safe)}，第一筆有必爆寶箱。${paceNote}`);
   $('budget-status').textContent = !dayActive(todayKey())
     ? '等待第一步'
     : (rawLeft < 0 ? '已經看見' : (pct > 40 ? '步調輕鬆' : '慢慢使用'));
@@ -958,8 +1000,8 @@ function renderHome() {
   // 零消費按鈕
   const ns = $('btn-nospend');
   const done = meta(todayKey()).noSpend;
-  ns.disabled = done || logsToday() > 0;
-  ns.textContent = done ? '今日零消費 — 達成' : '今日零消費';
+  ns.disabled = done || dailyLogsToday() > 0;
+  ns.textContent = done ? '零日常消費 — 達成' : '今日零日常消費';
   // 下一步
   const obj = buildObjective();
   $('objective-reward').textContent = obj.reward;
@@ -1071,6 +1113,8 @@ function renderStats() {
   const mk = monthKey();
   const monthExp = S.expenses.filter((e) => e.dateKey.startsWith(mk));
   const totalSpent = monthExp.reduce((s, e) => s + e.amount, 0);
+  const dailySpent = monthExp.filter((entry) => expenseBudgetImpact(entry) === 'daily').reduce((sum, entry) => sum + entry.amount, 0);
+  const committedSpent = monthExp.filter((entry) => expenseBudgetImpact(entry) === 'committed').reduce((sum, entry) => sum + entry.amount, 0);
   const monthIncome = (S.incomes || []).filter((entry) => entry.dateKey.startsWith(mk));
   const totalIncome = monthIncome.reduce((sum, entry) => sum + Number(entry.amount || 0), 0);
   let savedTotal = 0;
@@ -1083,7 +1127,9 @@ function renderStats() {
   });
   $('stat-summary').innerHTML = `
     <div class="stat-box"><div class="v">${fmt(totalIncome)}</div><div class="k">本月已記收入</div></div>
-    <div class="stat-box"><div class="v">${fmt(totalSpent)}</div><div class="k">本月總開支</div></div>
+    <div class="stat-box"><div class="v">${fmt(dailySpent)}</div><div class="k">本月日常消費</div></div>
+    <div class="stat-box"><div class="v">${fmt(committedSpent)}</div><div class="k">固定／預留支出</div></div>
+    <div class="stat-box"><div class="v">${fmt(totalSpent)}</div><div class="k">全部實際支出</div></div>
     <div class="stat-box"><div class="v">${fmt(savedTotal)}</div><div class="k">記帳日安心餘額</div></div>
     <div class="stat-box"><div class="v" style="color:${totalIncome - totalSpent >= 0 ? 'var(--leaf-deep)' : 'var(--coral)'}">${fmt(totalIncome - totalSpent)}</div><div class="k">已記收支差</div></div>`;
   // 資產負債
@@ -1119,6 +1165,7 @@ function renderStats() {
   const recent = [
     ...S.expenses.map((entry) => ({ ...entry, entryType: 'expense' })),
     ...(S.incomes || []).map((entry) => ({ ...entry, entryType: 'income' })),
+    ...(S.cardPayments || []).map((entry) => ({ ...entry, entryType: 'card_payment' })),
   ].sort((a, b) => b.ts - a.ts).slice(0, 10);
   $('recent-logs').innerHTML = recent.length
     ? recent.map((entry) => entry.entryType === 'income'
@@ -1126,12 +1173,32 @@ function renderStats() {
         <div><span class="lr-cat">${escapeHtml(entry.source || '收入')}</span><span class="lr-date">${entry.dateKey.slice(5)}</span><span class="intent-tag income-tag">收入</span></div>
         <div class="log-amount"><span class="lr-amt income">+${fmt(entry.amount)}</span><button class="icon-btn log-delete" data-del-income="${escapeHtml(entry.id)}" aria-label="刪除呢筆收入" title="刪除"><span class="icon" data-icon="trash"></span></button></div>
       </div>`
+      : entry.entryType === 'card_payment'
+      ? `<div class="log-row">
+        <div><span class="lr-cat">${escapeHtml((S.creditCards.find((card) => card.id === entry.cardId) || { name: '信用卡' }).name)} 還款</span><span class="lr-date">${entry.dateKey.slice(5)}</span><span class="intent-tag transfer-tag">還款轉移</span></div>
+        <div class="log-amount"><span class="lr-amt transfer">${fmt(entry.amount)}</span><button class="icon-btn log-delete" data-del-card-payment="${escapeHtml(entry.id)}" aria-label="刪除呢筆還款" title="刪除"><span class="icon" data-icon="trash"></span></button></div>
+      </div>`
       : `<div class="log-row">
-        <div><span class="lr-cat">${(CATS.find((c) => c.id === entry.cat) || { name: '其他' }).name}</span><span class="lr-date">${entry.dateKey.slice(5)}</span>${entry.intent ? `<span class="intent-tag">${(INTENTS.find((item) => item.id === entry.intent) || { name: '消費' }).name}</span>` : ''}</div>
-        <div class="log-amount"><span class="lr-amt">-${fmt(entry.amount)}</span><button class="icon-btn log-delete" data-del="${entry.id}" aria-label="刪除呢筆紀錄" title="刪除"><span class="icon" data-icon="trash"></span></button></div>
+        <div><span class="lr-cat">${(CATS.find((c) => c.id === entry.cat) || { name: '其他' }).name}</span><span class="lr-date">${entry.dateKey.slice(5)}</span>${expenseBudgetImpact(entry) === 'committed' ? '<span class="intent-tag committed-tag">固定／預留</span>' : (entry.intent ? `<span class="intent-tag">${(INTENTS.find((item) => item.id === entry.intent) || { name: '消費' }).name}</span>` : '')}</div>
+        <div class="log-amount"><span class="lr-amt">-${fmt(entry.amount)}</span>${entry.source === 'installment' ? '' : `<button class="icon-btn log-delete impact-edit" data-impact-expense="${entry.id}" aria-label="更改呢筆支出嘅預算分類" title="更改預算分類"><span class="icon" data-icon="edit"></span></button>`}<button class="icon-btn log-delete" data-del="${entry.id}" aria-label="刪除呢筆紀錄" title="刪除"><span class="icon" data-icon="trash"></span></button></div>
       </div>`).join('')
     : '<p class="tip">未有紀錄，去記低第一筆啦。</p>';
   initIcons($('recent-logs'));
+  $('recent-logs').querySelectorAll('[data-impact-expense]').forEach((button) => (button.onclick = () => {
+    const expense = S.expenses.find((entry) => entry.id === Number(button.dataset.impactExpense));
+    if (!expense) return;
+    const current = expenseBudgetImpact(expense);
+    const next = current === 'daily' ? 'committed' : 'daily';
+    popup('更改預算分類？', `<p class="confirm-copy"><b>${fmt(expense.amount)}</b><br>${next === 'committed' ? '改為固定／預留後，仍會計入總支出，但唔再扣日常安心額。' : '改為日常後，會重新計入當日同本月日常安心額。'}</p>`, {
+      confirmLabel: next === 'committed' ? '改為固定／預留' : '改為日常',
+      cancelLabel: '保持原狀',
+      onConfirm: () => {
+        expense.budgetImpact = next;
+        save(); renderAll();
+        toast(next === 'committed' ? '已改為固定／預留支出' : '已改為日常支出');
+      },
+    });
+  }));
   $('recent-logs').querySelectorAll('[data-del]').forEach((b) => (b.onclick = () => {
     const expense = S.expenses.find((entry) => entry.id === Number(b.dataset.del));
     if (!expense) return;
@@ -1168,6 +1235,21 @@ function renderStats() {
         S.incomes = S.incomes.filter((entry) => entry.id !== income.id);
         save(); renderAll();
         toast('收入紀錄已刪除');
+      },
+    });
+  }));
+  $('recent-logs').querySelectorAll('[data-del-card-payment]').forEach((button) => (button.onclick = () => {
+    const payment = (S.cardPayments || []).find((entry) => entry.id === button.dataset.delCardPayment);
+    if (!payment) return;
+    const card = S.creditCards.find((entry) => entry.id === payment.cardId);
+    popup('刪除呢筆還款？', `<p class="confirm-copy"><b>${escapeHtml(card ? card.name : '信用卡')} ${fmt(payment.amount)}</b><br>刪除後會將金額加回信用卡結欠，但唔會改動日常安心額。</p>`, {
+      confirmLabel: '確認刪除',
+      cancelLabel: '保留紀錄',
+      onConfirm: () => {
+        if (card) card.currentBalance = Number(card.currentBalance || 0) + Number(payment.amount || 0);
+        S.cardPayments = S.cardPayments.filter((entry) => entry.id !== payment.id);
+        save(); renderAll();
+        toast('還款紀錄已刪除，卡片結欠已同步');
       },
     });
   }));
@@ -1342,7 +1424,7 @@ function initOnboard() {
     $('ob-bar').style.width = ((questProgress / (steps.length - 2)) * 100) + '%';
     if (i === 6) {
       const inc = Number($('ob-income').value) || 0;
-      $('ob-budget-tip').textContent = inc > 0 ? `你收入 ${fmt(inc)}。參考：日常使費預算最好唔超過收入七成，剩返嘅留俾儲蓄同還債。` : '';
+      $('ob-budget-tip').textContent = inc > 0 ? `你收入 ${fmt(inc)}。請填扣除屋租、供款、保費等固定承諾後，真正可以安排日常生活嘅預算。` : '';
       if (!$('ob-budget').value && inc > 0) $('ob-budget').value = Math.round(inc * 0.6);
     }
   }
@@ -1508,6 +1590,9 @@ function init() {
     `<button data-k="${k}">${k === 'back' ? '&larr;' : k}</button>`).join('');
   $('numpad').querySelectorAll('button').forEach((b) => (b.onclick = () => numpadPress(b.dataset.k)));
   $('btn-log-save').onclick = saveSheet;
+  document.querySelectorAll('[data-budget-impact]').forEach((button) => {
+    button.onclick = () => setSheetBudgetImpact(button.dataset.budgetImpact);
+  });
   // events
   document.querySelectorAll('.tab').forEach((t) => (t.onclick = () => switchScreen(t.dataset.screen)));
   document.querySelectorAll('[data-screen-jump]').forEach((t) => (t.onclick = () => switchScreen(t.dataset.screenJump)));
