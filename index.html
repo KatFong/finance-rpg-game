@@ -9,7 +9,7 @@
 <title>理財勇者</title>
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="assets/hero.png">
-<link rel="stylesheet" href="style.css?v=24">
+<link rel="stylesheet" href="style.css?v=27">
 </head>
 <body data-screen="home">
 
@@ -113,9 +113,51 @@
 
 <!-- ===== 任務 ===== -->
 <main id="screen-quests" class="screen">
-  <div class="page-head"><span>每日小儀式</span><h2 class="sec-title">今日任務</h2><p>完成日常行動，慢慢養成你嘅理財隊伍。</p></div>
-  <div id="quest-list"></div>
-  <p class="tip page-tip">每日凌晨重置。金幣可以換裝備，令每次記帳更有回報。</p>
+  <div class="page-head quest-page-head"><span>七日遠征</span><h2 class="sec-title">冒險地圖</h2><p>唔追求連續完美；每一次願意看見金流，都會留低一個真實足印。</p></div>
+
+  <section class="expedition-board" aria-labelledby="expedition-chapter">
+    <div class="expedition-head">
+      <div><span id="expedition-week">本週遠征</span><h3 id="expedition-chapter">第一章 · 霧中營地</h3></div>
+      <b id="expedition-days">0 日同行</b>
+    </div>
+    <div class="expedition-map">
+      <div class="expedition-actors" aria-hidden="true">
+        <img class="art expedition-hero" id="expedition-hero" data-art="hero" alt="">
+        <img class="art expedition-boss" data-art="boss" alt="">
+      </div>
+      <div class="expedition-route" id="expedition-route"></div>
+    </div>
+    <div class="expedition-boss-status">
+      <span>慾望魔王</span>
+      <div class="hpbar"><div id="expedition-boss-fill"></div><b id="expedition-boss-hp">$0 / $0</b></div>
+    </div>
+    <p class="expedition-encouragement" id="expedition-encouragement"></p>
+    <div class="chapter-progress">
+      <div><span id="chapter-current-copy">旅程進度</span><b id="chapter-next-copy"></b></div>
+      <div class="chapter-track"><span id="chapter-progress-fill"></span></div>
+    </div>
+  </section>
+
+  <div class="quest-tabs" role="tablist" aria-label="任務週期">
+    <button class="active" type="button" role="tab" aria-selected="true" data-quest-view="daily">今日任務</button>
+    <button type="button" role="tab" aria-selected="false" data-quest-view="weekly">本週遠征</button>
+  </div>
+
+  <section class="quest-panel active" data-quest-panel="daily">
+    <div class="quest-section-head"><h3>今日三步</h3><span id="daily-quest-count">0 / 3</span></div>
+    <div id="quest-list"></div>
+    <p class="tip page-tip">每日凌晨更新。完成真實行動就夠，唔需要為任務製造支出。</p>
+  </section>
+
+  <section class="quest-panel" data-quest-panel="weekly">
+    <div class="quest-section-head"><h3>本週路標</h3><span id="weekly-quest-count">0 / 3</span></div>
+    <div id="weekly-quest-list"></div>
+    <div class="expedition-reward" id="expedition-reward">
+      <span class="reward-chest"><img class="art" data-art="chest-closed" alt="遠征寶箱"></span>
+      <div><b id="expedition-reward-title">遠征寶箱未解鎖</b><p id="expedition-reward-copy">完成並領取三個本週路標，就可以帶走章節獎勵。</p></div>
+      <button class="btn small primary" id="expedition-claim" type="button" disabled>領取</button>
+    </div>
+  </section>
 </main>
 
 <!-- ===== 商店 ===== -->
@@ -411,7 +453,8 @@
 <div id="toast" class="hidden"></div>
 
 <script>window.FRPG_CONFIG = { advisorApiUrl: '' };</script>
-<script src="advisor.js?v=24"></script>
-<script src="app.js?v=24"></script>
+<script src="gameplay.js?v=27"></script>
+<script src="advisor.js?v=27"></script>
+<script src="app.js?v=27"></script>
 </body>
 </html>

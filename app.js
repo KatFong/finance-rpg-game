@@ -31,6 +31,7 @@ const QUESTS = [
   { id: 'q_review', outcome: '今日收隊', name: '完成今日金流盤點', desc: '睇一眼日常、固定、收入同還款，確認今日輪廓。', target: 1, gold: 30 },
   { id: 'q_story', outcome: '有意識選擇', name: '說清一個今日選擇', desc: '為支出補上故事；零日常消費亦係一次主動選擇。', target: 1, gold: 40 },
 ];
+const WEEKLY_QUESTS = FinanceGameplay.WEEKLY_QUESTS;
 
 /* ===================== 狀態 ===================== */
 const defaults = () => ({
@@ -51,6 +52,7 @@ const defaults = () => ({
   items: { sword: 0, charm: 0, shield: 0, cape: 0 },
   expenses: [],            // {id, ts, dateKey, cat, amount, budgetImpact:'daily'|'committed', intent?}
   dayMeta: {},             // dateKey -> {chests, noSpend, reviewed, reviewRewarded, questsClaimed:[]}
+  weekMeta: {},            // weekKey -> {questsClaimed:[], bonusClaimed:false}
   boss: { weekKey: null, claimed: false },
 });
 
@@ -58,7 +60,15 @@ let S = load();
 function load() {
   try {
     const raw = localStorage.getItem(LS_KEY);
-    if (raw) return Object.assign(defaults(), JSON.parse(raw));
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      const base = defaults();
+      const state = Object.assign(base, parsed);
+      state.items = Object.assign(defaults().items, parsed.items || {});
+      state.dayMeta = state.dayMeta || {};
+      state.weekMeta = state.weekMeta || {};
+      return state;
+    }
   } catch (e) {}
   return defaults();
 }
@@ -82,6 +92,14 @@ function weekDays() { // 本週一至今日嘅 dateKey
     if (k === today) break;
   }
   return out;
+}
+function fullWeekDays() {
+  const start = mondayOf(new Date());
+  return Array.from({ length: 7 }, (_, index) => {
+    const day = new Date(start);
+    day.setDate(day.getDate() + index);
+    return keyOf(day);
+  });
 }
 
 /* ===================== 衍生數值 ===================== */
@@ -770,6 +788,63 @@ function markNoSpend() {
 }
 
 /* ===================== 任務 ===================== */
+function expeditionMeta(key) {
+  const wk = key || weekKey();
+  if (!S.weekMeta[wk]) S.weekMeta[wk] = { questsClaimed: [], bonusClaimed: false };
+  if (!Array.isArray(S.weekMeta[wk].questsClaimed)) S.weekMeta[wk].questsClaimed = [];
+  if (typeof S.weekMeta[wk].bonusClaimed !== 'boolean') S.weekMeta[wk].bonusClaimed = false;
+  if (!Number.isInteger(S.weekMeta[wk].targetDays) || S.weekMeta[wk].targetDays < 1 || S.weekMeta[wk].targetDays > 3) {
+    const remainingDays = fullWeekDays().filter((dateKey) => dateKey >= todayKey()).length;
+    S.weekMeta[wk].targetDays = FinanceGameplay.expeditionTargetDays(remainingDays);
+  }
+  return S.weekMeta[wk];
+}
+
+function weeklyProgressStats() {
+  const today = todayKey();
+  const elapsedDays = fullWeekDays().filter((key) => key <= today);
+  const activeDays = elapsedDays.filter(dayHasMoneyActivity).length;
+  const reviewDays = elapsedDays.filter((key) => S.dayMeta[key] && S.dayMeta[key].reviewed).length;
+  const storyDays = elapsedDays.filter((key) => (
+    (S.dayMeta[key] && S.dayMeta[key].noSpend)
+    || S.expenses.some((expense) => (
+      expense.dateKey === key && expenseBudgetImpact(expense) === 'daily' && expense.intent
+    ))
+  )).length;
+  return { activeDays, reviewDays, storyDays };
+}
+
+function weeklyQuestProgress(quest) {
+  const effectiveQuest = { ...quest, target: expeditionMeta().targetDays };
+  return FinanceGameplay.weeklyQuestProgress(effectiveQuest, weeklyProgressStats());
+}
+
+function claimWeeklyQuest(qid) {
+  const baseQuest = WEEKLY_QUESTS.find((item) => item.id === qid);
+  const state = expeditionMeta();
+  const quest = baseQuest ? { ...baseQuest, target: state.targetDays } : null;
+  if (!quest || state.questsClaimed.includes(qid) || weeklyQuestProgress(quest) < quest.target) return;
+  state.questsClaimed.push(qid);
+  gainGold(quest.gold);
+  gainXp(quest.xp);
+  save(); renderAll();
+  softVibrate([8, 24, 8]);
+  toast(FinanceGameplay.expeditionComplete(state.questsClaimed)
+    ? `路標完成！遠征寶箱已解鎖`
+    : `本週路標完成 · +${quest.gold}G · +${quest.xp} XP`);
+}
+
+function claimExpeditionBonus() {
+  const state = expeditionMeta();
+  if (state.bonusClaimed || !FinanceGameplay.expeditionComplete(state.questsClaimed)) return;
+  state.bonusClaimed = true;
+  gainGold(180);
+  gainXp(180);
+  save(); renderAll();
+  softVibrate([12, 30, 12]);
+  popup('七日遠征寶箱', `<img class="art expedition-popup-chest" data-art="chest-open" alt="已打開嘅遠征寶箱"><p class="expedition-popup-copy">你唔需要每日完美，只係一星期入面幾次願意看清楚。<br><b>+180 金幣 · +180 XP</b></p>`);
+}
+
 function questProgress(q) {
   const t = todayKey(), m = meta(t);
   if (q.id === 'q_checkin') return dayHasMoneyActivity(t) ? 1 : 0;
@@ -1149,8 +1224,69 @@ function renderHome() {
     : '';
   renderSceneDialogue();
 }
+let activeQuestView = 'daily';
+function switchQuestView(view) {
+  if (!['daily', 'weekly'].includes(view)) return;
+  activeQuestView = view;
+  document.querySelectorAll('[data-quest-view]').forEach((button) => {
+    const active = button.dataset.questView === view;
+    button.classList.toggle('active', active);
+    button.setAttribute('aria-selected', String(active));
+  });
+  document.querySelectorAll('[data-quest-panel]').forEach((panel) => {
+    panel.classList.toggle('active', panel.dataset.questPanel === view);
+  });
+}
+
+function renderExpedition() {
+  const days = fullWeekDays();
+  const today = todayKey();
+  const route = FinanceGameplay.routeModel(days, today, days.filter(dayHasMoneyActivity));
+  const weekdayLabels = ['一', '二', '三', '四', '五', '六', '日'];
+  const statusLabels = { cleared: '足印', rest: '休整', current: '今日', future: '未到' };
+  const stats = weeklyProgressStats();
+  const chapter = FinanceGameplay.chapterFor(S.streak);
+  const start = new Date(`${days[0]}T12:00:00`);
+  const end = new Date(`${days[6]}T12:00:00`);
+  const dateFormat = new Intl.DateTimeFormat('zh-HK', { month: 'numeric', day: 'numeric' });
+
+  $('expedition-week').textContent = `${dateFormat.format(start)} – ${dateFormat.format(end)}`;
+  $('expedition-chapter').textContent = `第 ${chapter.number} 章 · ${chapter.name}`;
+  $('expedition-days').textContent = `${stats.activeDays} 日同行`;
+  setHeroArt($('expedition-hero'), S.heroType);
+  $('expedition-route').innerHTML = route.map((day) => `
+    <div class="route-stop ${day.status}${day.dateKey === today ? ' today' : ''}" aria-label="星期${weekdayLabels[day.index]}，${statusLabels[day.status]}">
+      <span class="route-day">${weekdayLabels[day.index]}</span>
+      <span class="route-node">${day.status === 'cleared' ? '<span class="icon" data-icon="check"></span>' : day.index + 1}</span>
+      <small>${statusLabels[day.status]}</small>
+    </div>`).join('');
+  initIcons($('expedition-route'));
+
+  const damage = bossDamage();
+  const max = bossMaxHp();
+  const hp = Math.max(0, max - damage);
+  $('expedition-boss-fill').style.width = `${Math.max(0, Math.min(100, (hp / max) * 100))}%`;
+  $('expedition-boss-hp').textContent = `${fmt(hp)} / ${fmt(max)}`;
+  const targetDays = expeditionMeta().targetDays;
+  $('expedition-encouragement').textContent = targetDays < 3
+    ? `今週較後加入，路標已調整為 ${targetDays} 日；之前日子唔需要補交。`
+    : stats.activeDays === 0
+    ? '路線未開始。今日留低一個足印就夠，之前日子唔需要補交。'
+    : stats.activeDays < 3
+      ? `已經行咗 ${stats.activeDays} 日。休整唔會令進度歸零，再揀一日看清楚就可以。`
+      : `本週主線已站穩：${stats.activeDays} 日願意面對數字，剩低係自由探索。`;
+  $('chapter-current-copy').textContent = `${chapter.name} · 累積同行 ${S.streak} 日`;
+  $('chapter-next-copy').textContent = chapter.next
+    ? `再 ${chapter.daysToNext} 日到 ${chapter.next.name}`
+    : '目前最高章節';
+  $('chapter-progress-fill').style.width = `${chapter.progressPct}%`;
+}
+
 function renderQuests() {
+  renderExpedition();
   const m = meta(todayKey());
+  const dailyDone = QUESTS.filter((quest) => questProgress(quest) >= quest.target).length;
+  $('daily-quest-count').textContent = `${dailyDone} / ${QUESTS.length}`;
   $('quest-list').innerHTML = QUESTS.map((q) => {
     const p = questProgress(q);
     const claimed = m.questsClaimed.includes(q.id);
@@ -1173,6 +1309,59 @@ function renderQuests() {
   initIcons($('quest-list'));
   $('quest-list').querySelectorAll('[data-claim]').forEach((b) => (b.onclick = () => claimQuest(b.dataset.claim)));
   $('quest-list').querySelectorAll('[data-quest-go]').forEach((b) => (b.onclick = () => startQuest(b.dataset.questGo)));
+
+  const weekState = expeditionMeta();
+  const weeklyDone = WEEKLY_QUESTS.filter((quest) => weeklyQuestProgress(quest) >= weekState.targetDays).length;
+  $('weekly-quest-count').textContent = `${weeklyDone} / ${WEEKLY_QUESTS.length}`;
+  $('weekly-quest-list').innerHTML = WEEKLY_QUESTS.map((quest) => {
+    const target = weekState.targetDays;
+    const progress = weeklyQuestProgress(quest);
+    const claimed = weekState.questsClaimed.includes(quest.id);
+    const done = progress >= target;
+    const questName = quest.name.replace('3', String(target));
+    return `<div class="quest weekly-quest${done ? ' done' : ''}" data-weekly-quest-id="${quest.id}">
+      <div class="q-info">
+        <div class="q-outcome">${quest.outcome}</div>
+        <div class="q-name">${questName}</div>
+        <div class="q-desc">${quest.desc}</div>
+        <div class="q-prog">${claimed ? '獎勵已領取' : `${progress}/${target} · ${quest.gold}G + ${quest.xp} XP`}</div>
+        <div class="q-bar"><div style="width:${(progress / target) * 100}%"></div></div>
+      </div>
+      ${claimed
+        ? '<span class="icon" data-icon="check"></span>'
+        : done
+          ? `<button class="btn small primary" data-weekly-claim="${quest.id}">領取</button>`
+          : `<button class="btn small ghost" data-weekly-go="${quest.id}">今日行動</button>`}
+    </div>`;
+  }).join('');
+  initIcons($('weekly-quest-list'));
+  $('weekly-quest-list').querySelectorAll('[data-weekly-claim]').forEach((button) => {
+    button.onclick = () => claimWeeklyQuest(button.dataset.weeklyClaim);
+  });
+  $('weekly-quest-list').querySelectorAll('[data-weekly-go]').forEach((button) => {
+    button.onclick = () => switchQuestView('daily');
+  });
+
+  const expeditionComplete = FinanceGameplay.expeditionComplete(weekState.questsClaimed);
+  const rewardClaimed = weekState.bonusClaimed;
+  const rewardImage = $('expedition-reward').querySelector('img');
+  rewardImage.dataset.art = rewardClaimed ? 'chest-open' : 'chest-closed';
+  rewardImage.src = `assets/${rewardImage.dataset.art}.png`;
+  $('expedition-reward').classList.toggle('ready', expeditionComplete && !rewardClaimed);
+  $('expedition-reward').classList.toggle('claimed', rewardClaimed);
+  $('expedition-reward-title').textContent = rewardClaimed
+    ? '本週遠征寶箱已領取'
+    : expeditionComplete ? '遠征寶箱已解鎖' : '遠征寶箱未解鎖';
+  $('expedition-reward-copy').textContent = rewardClaimed
+    ? '獎勵已經收好。剩低日子可以按自己節奏探索。'
+    : expeditionComplete
+      ? '三個路標都已領取，帶走 180G 同 180 XP。'
+      : weekState.targetDays < 3
+        ? `今週較後加入，每個路標已調整為 ${weekState.targetDays} 日。領取三項獎勵後開箱。`
+        : '完成並領取三個本週路標，就可以帶走章節獎勵。';
+  $('expedition-claim').disabled = !expeditionComplete || rewardClaimed;
+  $('expedition-claim').textContent = rewardClaimed ? '已領取' : '領取';
+  switchQuestView(activeQuestView);
 }
 function renderShop() {
   $('shop-list').innerHTML = SHOP.map((it) => {
@@ -1849,6 +2038,7 @@ function init() {
   document.querySelectorAll('.tab').forEach((t) => (t.onclick = () => switchScreen(t.dataset.screen)));
   document.querySelectorAll('[data-screen-jump]').forEach((t) => (t.onclick = () => switchScreen(t.dataset.screenJump)));
   document.querySelectorAll('[data-stats-view]').forEach((button) => (button.onclick = () => switchStatsView(button.dataset.statsView)));
+  document.querySelectorAll('[data-quest-view]').forEach((button) => (button.onclick = () => switchQuestView(button.dataset.questView)));
   $('tab-log').onclick = () => FinanceAdvisor.open();
   bindLogButton();
   $('home-reminder-button').onclick = openHomeReminder;
@@ -1871,6 +2061,7 @@ function init() {
   $('card-payment-cancel').onclick = closeCardPaymentForm;
   $('card-payment-mask').onclick = (event) => { if (event.target === $('card-payment-mask')) closeCardPaymentForm(); };
   $('btn-nospend').onclick = markNoSpend;
+  $('expedition-claim').onclick = claimExpeditionBonus;
   $('log-mask').onclick = (e) => { if (e.target === $('log-mask')) closeLogSheet(); };
   $('chest-img').onclick = openChest;
   $('chest-close').onclick = () => $('chest-mask').classList.add('hidden');
