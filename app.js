@@ -274,6 +274,15 @@ function pulseScene() {
 let dialogueTimer = null;
 let dialogueFinish = null;
 let activeDialogueKey = '';
+let homeReminder = null;
+
+function closeSceneDialogue() {
+  clearInterval(dialogueTimer);
+  dialogueTimer = null;
+  dialogueFinish = null;
+  $('dialogue-panel').classList.add('hidden');
+  $('home-reminder-button').setAttribute('aria-expanded', 'false');
+}
 
 function renderDialogueChoices(choices) {
   const box = $('dialogue-choices');
@@ -284,6 +293,7 @@ function renderDialogueChoices(choices) {
     button.textContent = choice.label;
     button.onclick = () => {
       softVibrate(6);
+      closeSceneDialogue();
       choice.action();
     };
     box.appendChild(button);
@@ -292,6 +302,8 @@ function renderDialogueChoices(choices) {
 
 function speak(speaker, text, choices, immediate) {
   clearInterval(dialogueTimer);
+  $('dialogue-panel').classList.remove('hidden');
+  $('home-reminder-button').setAttribute('aria-expanded', 'true');
   const speakerEl = $('dialogue-speaker');
   const textEl = $('dialogue-text');
   const choiceBox = $('dialogue-choices');
@@ -324,6 +336,26 @@ function speak(speaker, text, choices, immediate) {
 
 function sceneChoices(objective) {
   return [{ label: objective.label, primary: true, action: objective.action }];
+}
+
+function openHomeReminder() {
+  if (!homeReminder) renderSceneDialogue();
+  if (!homeReminder) return;
+  speak(homeReminder.speaker, homeReminder.text, homeReminder.choices);
+}
+
+function maybeOpenDailyReminder() {
+  if (!S.onboarded || !S.finProfile) return;
+  const key = `finance-rpg-reminder-${todayKey()}`;
+  try {
+    if (sessionStorage.getItem(key)) return;
+    sessionStorage.setItem(key, 'shown');
+  } catch (error) {
+    // Storage can be unavailable in private browsing; the reminder still works manually.
+  }
+  setTimeout(() => {
+    if (activeScreenName === 'home' && $('dialogue-panel').classList.contains('hidden')) openHomeReminder();
+  }, 450);
 }
 
 function showAdviceDialogue() {
@@ -369,7 +401,7 @@ function renderSceneDialogue(force) {
   const dead = bossDamage() >= bossMaxHp();
   const period = periodInfo();
   const key = [todayKey(), S.heroName, pace.safe, bossMaxHp(), spent, logsToday(), bossDamage(), S.boss.claimed, S.lastLogDate, objective.label].join('|');
-  if (!force && activeDialogueKey === key) return;
+  if (!force && activeDialogueKey === key && homeReminder) return;
   activeDialogueKey = key;
 
   let text;
@@ -386,7 +418,11 @@ function renderSceneDialogue(force) {
   } else {
     text = '今日盤點完成。你嘅每筆選擇都已經寫入冒險手帳，剩返嘅能量會喺今晚化成對魔王嘅傷害。';
   }
-  speak('錢錢軍師', text, sceneChoices(objective));
+  homeReminder = { speaker: '錢錢軍師', text, choices: sceneChoices(objective) };
+  $('home-reminder-label').textContent = objective.label;
+  $('home-reminder-button').setAttribute('aria-label', `軍師提醒：${objective.label}`);
+  $('home-reminder-button').title = `軍師提醒：${objective.label}`;
+  if (force) openHomeReminder();
 }
 
 let pendingChestTimer = null;
@@ -1468,6 +1504,7 @@ const screenScroll = { home: 0, quests: 0, shop: 0, stats: 0 };
 let activeScreenName = 'home';
 function switchScreen(name) {
   if (!Object.prototype.hasOwnProperty.call(screenScroll, name)) return;
+  if (name !== 'home') closeSceneDialogue();
   screenScroll[activeScreenName] = window.scrollY;
   document.body.dataset.screen = name;
   document.querySelectorAll('.screen').forEach((s) => s.classList.toggle('active', s.id === `screen-${name}`));
@@ -1814,6 +1851,14 @@ function init() {
   document.querySelectorAll('[data-stats-view]').forEach((button) => (button.onclick = () => switchStatsView(button.dataset.statsView)));
   $('tab-log').onclick = () => FinanceAdvisor.open();
   bindLogButton();
+  $('home-reminder-button').onclick = openHomeReminder;
+  $('dialogue-close').onclick = closeSceneDialogue;
+  $('dialogue-panel').onclick = (event) => {
+    if (event.target === $('dialogue-panel')) closeSceneDialogue();
+  };
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && !$('dialogue-panel').classList.contains('hidden')) closeSceneDialogue();
+  });
   $('btn-home-status').onclick = showStatusDialogue;
   $('btn-history-add').onclick = () => openLogSheet('expense');
   $('btn-card-add').onclick = () => openCardForm();
@@ -1853,6 +1898,7 @@ function init() {
   renderAll();
   // 未開檔，或者舊存檔未有財務檔案 → 開問卷
   if (!S.onboarded || !S.finProfile) openFinWizard();
+  else maybeOpenDailyReminder();
   // Shortcuts / URL 快速入帳：?add=food:45
   const q = new URLSearchParams(location.search);
   const add = q.get('add');

@@ -9,7 +9,7 @@
 <title>理財勇者</title>
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="assets/hero.png">
-<link rel="stylesheet" href="style.css?v=23">
+<link rel="stylesheet" href="style.css?v=24">
 </head>
 <body data-screen="home">
 
@@ -53,7 +53,14 @@
       <div class="hero-tag"><span id="hero-name">勇者</span><b id="hero-mood">準備出發</b></div>
     </div>
 
-    <div class="dialogue-panel" id="dialogue-panel">
+    <button class="home-reminder-button" id="home-reminder-button" type="button" aria-label="查看軍師提醒" aria-haspopup="dialog" aria-expanded="false" title="軍師提醒">
+      <span class="reminder-avatar"><img class="art" data-art="strategist" alt=""></span>
+      <span class="reminder-badge" aria-hidden="true"><span class="icon" data-icon="chat"></span></span>
+      <span class="sr-only" id="home-reminder-label">查看今日下一步</span>
+    </button>
+
+    <div class="dialogue-panel hidden" id="dialogue-panel" role="dialog" aria-modal="true" aria-labelledby="dialogue-speaker">
+      <button class="icon-btn npc-close" id="dialogue-close" type="button" aria-label="關閉軍師提醒" title="關閉"><span class="icon" data-icon="close"></span></button>
       <div class="dialogue-portrait"><img class="art" data-art="strategist" alt="錢錢軍師"></div>
       <div class="dialogue-content">
         <div class="dialogue-speaker" id="dialogue-speaker">錢錢軍師</div>
@@ -404,7 +411,7 @@
 <div id="toast" class="hidden"></div>
 
 <script>window.FRPG_CONFIG = { advisorApiUrl: '' };</script>
-<script src="advisor.js?v=23"></script>
-<script src="app.js?v=23"></script>
+<script src="advisor.js?v=24"></script>
+<script src="app.js?v=24"></script>
 </body>
 </html>

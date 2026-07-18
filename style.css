@@ -44,6 +44,17 @@ button, input { font: inherit; }
 textarea { font: inherit; }
 button { touch-action: manipulation; }
 .hidden { display: none !important; }
+.sr-only {
+  position: absolute !important;
+  width: 1px !important;
+  height: 1px !important;
+  padding: 0 !important;
+  margin: -1px !important;
+  overflow: hidden !important;
+  clip: rect(0, 0, 0, 0) !important;
+  white-space: nowrap !important;
+  border: 0 !important;
+}
 .icon { display: inline-grid; place-items: center; }
 .icon svg { width: 1.15em; height: 1.15em; vertical-align: -0.22em; }
 
@@ -1064,30 +1075,132 @@ body[data-screen="home"] .boss-hp span { font-size: 7px; }
 body[data-screen="home"] .boss-img { right: 1px; bottom: 5px; width: 38px; height: 38px; }
 body[data-screen="home"] .boss-card .gold-btn { min-height: 28px; margin-top: 4px; padding: 3px; font-size: 8px; }
 body[data-screen="home"] #boss-claim { display: none !important; }
-body[data-screen="home"] .dialogue-panel {
-  left: 10px;
-  right: 10px;
-  bottom: 72px;
-  grid-template-columns: 44px minmax(0, 1fr);
-  min-height: 132px;
-  padding: 9px 10px;
-  border-bottom-width: 4px;
+body[data-screen="home"] .home-reminder-button {
+  position: absolute;
+  left: 12px;
+  bottom: 74px;
+  z-index: 7;
+  width: 54px;
+  height: 54px;
+  display: grid;
+  place-items: center;
+  padding: 4px;
+  border: 1px solid rgba(255, 255, 255, .8);
+  border-bottom: 3px solid rgba(41, 87, 84, .26);
+  border-radius: 50%;
+  background: rgba(255, 253, 247, .94);
+  box-shadow: 0 8px 20px rgba(20, 51, 55, .24);
+  color: var(--ink);
+  cursor: pointer;
 }
-body[data-screen="home"] .dialogue-portrait { width: 38px; height: 38px; }
-body[data-screen="home"] .dialogue-portrait img { width: 44px; height: 44px; }
-body[data-screen="home"] .dialogue-content { padding-left: 6px; }
-body[data-screen="home"] .dialogue-speaker { margin-bottom: 2px; font-size: 9px; }
-body[data-screen="home"] #dialogue-text {
-  min-height: 44px;
-  display: -webkit-box;
+.reminder-avatar {
+  width: 42px;
+  height: 42px;
+  display: grid;
+  place-items: center;
   overflow: hidden;
-  font-size: 11px;
-  line-height: 1.45;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 3;
+  border: 2px solid #f3d074;
+  border-radius: 50%;
+  background: #fff4c9;
 }
-body[data-screen="home"] .dialogue-choices { grid-template-columns: 1fr; gap: 0; margin-top: 7px; }
-body[data-screen="home"] .dialogue-choice { min-height: 38px; padding: 6px 8px; font-size: 10px; }
+.reminder-avatar img {
+  width: 48px;
+  height: 48px;
+  object-fit: contain;
+  transform: scale(1.65) translateY(15%);
+  transform-origin: center;
+}
+.reminder-badge {
+  position: absolute;
+  top: -3px;
+  right: -4px;
+  width: 22px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  border: 2px solid #fff;
+  border-radius: 50%;
+  background: var(--leaf);
+  color: #173f2b;
+  box-shadow: 0 3px 8px rgba(20, 51, 55, .22);
+  animation: reminder-breathe 2.2s ease-in-out infinite;
+}
+.reminder-badge svg { width: 12px; height: 12px; }
+@keyframes reminder-breathe { 50% { transform: translateY(-2px); } }
+body[data-screen="home"] .dialogue-panel {
+  inset: 0;
+  z-index: 12;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 520px);
+  align-content: end;
+  justify-content: center;
+  justify-items: center;
+  gap: 0;
+  padding: 58px 12px 14px;
+  border: 0;
+  border-radius: 0;
+  background: rgba(18, 49, 51, .56);
+  box-shadow: none;
+  backdrop-filter: blur(2px);
+}
+body[data-screen="home"] .npc-close {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 2;
+  background: rgba(255, 255, 255, .94);
+  box-shadow: 0 5px 14px rgba(20, 51, 55, .24);
+}
+body[data-screen="home"] .dialogue-portrait {
+  width: 116px;
+  height: 116px;
+  z-index: 1;
+  margin-bottom: -18px;
+  border: 3px solid #fff;
+  border-radius: 8px;
+  background: #e9f8f3;
+  box-shadow: 0 9px 22px rgba(20, 51, 55, .3);
+}
+body[data-screen="home"] .dialogue-portrait img {
+  width: 132px;
+  height: 132px;
+  transform: scale(1.35) translateY(12%);
+}
+body[data-screen="home"] .dialogue-content {
+  width: 100%;
+  min-width: 0;
+  padding: 0 13px 12px;
+  overflow: hidden;
+  border: 3px solid #65b972;
+  border-bottom-width: 5px;
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 13px 30px rgba(20, 51, 55, .34);
+}
+body[data-screen="home"] .dialogue-speaker {
+  margin: 0 -13px 10px;
+  padding: 8px 13px;
+  background: var(--leaf);
+  color: #173f2b;
+  font-size: 11px;
+}
+body[data-screen="home"] #dialogue-text {
+  min-height: 72px;
+  max-height: 124px;
+  display: block;
+  overflow-y: auto;
+  font-size: 13px;
+  line-height: 1.55;
+}
+body[data-screen="home"] .dialogue-choices {
+  width: 100%;
+  grid-column: 1;
+  grid-template-columns: repeat(auto-fit, minmax(92px, 1fr));
+  gap: 6px;
+  margin-top: 8px;
+}
+body[data-screen="home"] .dialogue-choice { min-height: 42px; padding: 7px 8px; font-size: 10px; }
 .home-quick-actions {
   position: absolute;
   left: 10px;
@@ -1116,8 +1229,9 @@ body[data-screen="home"] .dialogue-choice { min-height: 38px; padding: 6px 8px; 
   body[data-screen="home"] .hero-img { width: 164px; height: 164px; }
   body[data-screen="home"] .hero-tag { bottom: 0; }
   body[data-screen="home"] .boss-card { top: 116px; }
-  body[data-screen="home"] .dialogue-panel { min-height: 122px; }
-  body[data-screen="home"] #dialogue-text { min-height: 39px; -webkit-line-clamp: 3; }
+  body[data-screen="home"] .dialogue-portrait { width: 94px; height: 94px; }
+  body[data-screen="home"] .dialogue-portrait img { width: 108px; height: 108px; }
+  body[data-screen="home"] #dialogue-text { min-height: 58px; max-height: 100px; }
 }
 
 @media (min-width: 620px) {
