@@ -119,6 +119,9 @@
     <button class="btn ghost" id="btn-editfin">更新財務檔案</button>
     <button class="btn ghost" id="btn-shortcut">Apple Shortcuts 快速入帳</button>
   </div>
+  <div class="section-line"><h3 class="sec-sub">信用卡迷宮</h3><button class="btn small ghost" id="btn-card-advisor"><span class="icon" data-icon="chat"></span>找軍師</button></div>
+  <div class="stat-summary three" id="credit-summary"></div>
+  <div id="credit-list" class="credit-list"></div>
   <h3 class="sec-sub">最近 7 日開支</h3>
   <div class="chart7" id="chart7"></div>
   <h3 class="sec-sub">本月分類開支</h3>
@@ -131,7 +134,7 @@
 <nav id="tabbar">
   <button class="tab active" data-screen="home"><span class="icon" data-icon="swords"></span>冒險</button>
   <button class="tab" data-screen="quests"><span class="icon" data-icon="scroll"></span>任務</button>
-  <button id="tab-log" aria-label="記帳"><span class="icon" data-icon="plus"></span></button>
+  <button id="tab-log" aria-label="軍師對話"><span class="icon" data-icon="mic"></span></button>
   <button class="tab" data-screen="shop"><span class="icon" data-icon="bag"></span>商店</button>
   <button class="tab" data-screen="stats"><span class="icon" data-icon="chart"></span>統計</button>
 </nav>
@@ -151,6 +154,31 @@
       <div class="amount-display"><span class="cur">$</span><span id="amt-text">0</span></div>
       <div class="numpad" id="numpad"></div>
       <button class="btn primary big" id="btn-log-save">確認</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== 軍師 AI 對話 ===== -->
+<div class="sheet-mask hidden" id="advisor-mask">
+  <div class="sheet advisor-sheet" id="advisor-sheet" role="dialog" aria-labelledby="advisor-title">
+    <div class="sheet-handle"></div>
+    <div class="advisor-head">
+      <span class="guide-avatar"><img class="art" data-art="strategist" alt="錢錢軍師"></span>
+      <div><h3 id="advisor-title">錢錢軍師</h3><span class="advisor-mode" id="advisor-mode">本機軍師</span></div>
+      <button class="icon-btn" id="advisor-close" aria-label="關閉軍師對話" title="關閉"><span class="icon" data-icon="close"></span></button>
+    </div>
+    <div class="advisor-messages" id="advisor-messages" aria-live="polite"></div>
+    <div class="advisor-thinking hidden" id="advisor-thinking"><i></i><i></i><i></i><span>軍師整理中</span></div>
+    <div class="advisor-prompts">
+      <button data-advisor-prompt="我想記一筆支出">記支出</button>
+      <button data-advisor-prompt="我想新增一張信用卡">信用卡</button>
+      <button data-advisor-prompt="我想記錄一個分期計劃">分期任務</button>
+    </div>
+    <div class="advisor-draft hidden" id="advisor-draft"></div>
+    <div class="advisor-composer">
+      <button class="icon-btn mic-btn" id="advisor-mic" aria-label="開始語音輸入" title="語音輸入"><span class="icon" data-icon="mic"></span></button>
+      <textarea id="advisor-input" rows="1" maxlength="1200" placeholder="同軍師講..."></textarea>
+      <button class="icon-btn send-btn" id="advisor-send" aria-label="傳送訊息" title="傳送"><span class="icon" data-icon="send"></span></button>
     </div>
   </div>
 </div>
@@ -176,17 +204,25 @@
 </div>
 
 <!-- ===== 新手設定（財務問卷） ===== -->
-<div class="modal-mask hidden" id="onboard-mask">
+<div class="modal-mask welcome-mask hidden" id="onboard-mask">
   <div class="modal onboard">
     <div class="ob-progress"><div id="ob-bar"></div></div>
     <div class="ob-guide"><span class="guide-avatar"><img class="art" data-art="strategist" alt="錢錢軍師"></span><div><b>錢錢軍師</b><p id="ob-guide-text">終於等到你。等我先了解你嘅旅程起點。</p></div></div>
 
     <div class="ob-step" data-step="0">
-      <img class="art hero-img" data-art="hero" alt="勇者">
-      <h3>你想我點稱呼你？</h3>
-      <p class="tip">每個人起點都唔同，我會按你嘅真實情況調整任務。資料只留喺你部機。</p>
+      <span class="ob-kicker">第一幕 · 揀選同行者</span>
+      <h3>邊位勇者代表你？</h3>
+      <div class="hero-choice-grid" id="ob-hero-type">
+        <button class="hero-choice active" type="button" data-hero-type="male" aria-pressed="true">
+          <img src="assets/hero.png" alt="男勇者"><b>男勇者</b><span>森林劍士</span>
+        </button>
+        <button class="hero-choice" type="button" data-hero-type="female" aria-pressed="false">
+          <img src="assets/hero-female.png" alt="女勇者"><b>女勇者</b><span>森林劍士</span>
+        </button>
+      </div>
+      <p class="tip">揀一個你想每日見到嘅同行者。之後可以喺財務檔案再改。</p>
       <label>勇者名（可留空）<input id="ob-name" maxlength="10" placeholder="勇者"></label>
-      <button class="btn primary big ob-next">就叫呢個名</button>
+      <button class="btn primary big ob-next">跟軍師出發</button>
     </div>
 
     <div class="ob-step hidden" data-step="1">
@@ -236,6 +272,8 @@
 
 <div id="toast" class="hidden"></div>
 
+<script>window.FRPG_CONFIG = { advisorApiUrl: '' };</script>
+<script src="advisor.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

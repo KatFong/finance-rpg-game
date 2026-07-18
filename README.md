@@ -1,6 +1,8 @@
 # 理財勇者（Finance RPG）
 
-手機優先嘅個人理財 RPG。用真實記帳行為驅動遊戲：記支出＝儲 XP／爆寶箱，每日預算＝角色 HP，每週儲蓄目標＝慾望魔王血量。純前端，資料存喺 localStorage，唔使註冊。
+手機優先嘅個人理財 RPG。用真實記帳行為驅動遊戲：記支出＝儲 XP／爆寶箱，每日預算＝角色 HP，每週儲蓄目標＝慾望魔王血量。日常財務資料存喺 localStorage，唔使註冊。
+
+開場係全屏營地故事流程，可以選男／女勇者；舊存檔亦可以喺「更新財務檔案」隨時切換角色。
 
 ## 執行
 
@@ -38,6 +40,33 @@ python3 -m http.server 3900 --directory /Users/kat/finance-rpg-game
 App 內 統計 →「Apple Shortcuts 快速入帳」有逐步教學（要求輸入 → 選單 → 開啟 URL）。
 iPhone 用法：同 Mac 同一 Wi-Fi 用 Mac IP，或者 host 上 GitHub Pages（資料照存手機 localStorage）。
 
+## 信用卡迷宮 + 分期任務
+
+- 每張卡可以記錄尾數、信用額、現時結欠、截數日、還款日同 APR。
+- 分期支援本金、總期數、已供期數、APR、每期手續費、已知每期金額同第一期日期。
+- 供款表由 `advisor.js` 本機確定性計算；AI 只整理草稿，唔負責計息或直接寫資料。
+- 每期供款會預留喺本月安心額度；繳付後推進任務線，還卡數只減結欠，唔會重複當成新消費。
+
+## 對話／語音軍師
+
+底部「軍師對話」支援廣東話文字同瀏覽器語音輸入。資料未齊時會逐項追問；整理完成後必須由用戶按「確認記錄」先寫入 localStorage。
+
+GitHub Pages 預設使用本機規則軍師。要接 OpenAI，只需部署同一個 `POST /api/advisor` endpoint（已提供 Vercel function）：
+
+```bash
+vercel env add OPENAI_API_KEY
+vercel env add ALLOWED_ORIGIN      # https://katfong.github.io
+vercel --prod
+```
+
+再將 `index.html` 嘅設定指向部署網址：
+
+```js
+window.FRPG_CONFIG = { advisorApiUrl: 'https://<your-project>.vercel.app/api/advisor' };
+```
+
+可選 `OPENAI_MODEL`，預設 `gpt-5.4-mini`。API key 只可以放後端環境變數，唔好寫入 HTML、JavaScript 或 Git；endpoint 只傳最近對話與精簡卡片資料，並設定 `store: false`。
+
 ## 美術生成（codex bridge，唔使 OpenAI API key）
 
 圖用 gpt-image-2 經 **codex CLI（ChatGPT 訂閱身份）** 生成：
@@ -61,7 +90,9 @@ UI 拆件流程（`tools/gen-ui.sh`）：
 
 ## 檔案
 
-- `index.html` / `style.css` / `app.js` — 成個 game
+- `index.html` / `style.css` / `app.js` — 遊戲 UI 同核心狀態
+- `advisor.js` — 對話軍師、本機 fallback、分期計算同信用卡迷宮
+- `api/advisor.js` — 單一 OpenAI Responses API 後端 endpoint
 - `assets/` — 生成嘅美術（hero, boss, chest-closed, chest-open, coin, shield, flame, bg）
 - `tools/gpt-image-2` — codex bridge wrapper（來自 oakplank/claude-gpt-image-bridge，已審閱）
 - `tools/chromakey.mjs` — magenta 去背（pngjs）

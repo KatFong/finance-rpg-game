@@ -36,11 +36,15 @@ const QUESTS = [
 const defaults = () => ({
   onboarded: false,
   heroName: '勇者',
+  heroType: 'male',
   monthlyBudget: 8000,
   saveRate: 0.2,
   finProfile: null,        // {incomeType:'fixed'|'variable', income, savings}
   debts: [],               // {id, name, orig, balance}
   repayments: [],          // {id, ts, debtId, amount}
+  creditCards: [],         // {id, name, last4, creditLimit, currentBalance, statementDay, dueDay, annualRate}
+  installments: [],        // {id, cardId, principal, termMonths, schedule:[]}
+  cardPayments: [],        // {id, cardId, amount, dateKey, ts}
   gold: 0, xp: 0, level: 1,
   streak: 0, lastLogDate: null,
   items: { sword: 0, charm: 0, shield: 0, cape: 0 },
@@ -92,7 +96,8 @@ function daySpend(k) {
 function safeToSpendToday() {
   const now = new Date();
   const mk = monthKey();
-  const base = dailyBudget();
+  const reservedInstallments = window.FinanceAdvisor ? FinanceAdvisor.monthReserved(S, mk) : 0;
+  const base = Math.max(0, Math.round((S.monthlyBudget - reservedInstallments) / 30));
   const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
   const daysLeft = daysInMonth - now.getDate() + 1;
   const spentBeforeToday = S.expenses.reduce((sum, expense) => (
@@ -104,11 +109,11 @@ function safeToSpendToday() {
   Object.keys(S.dayMeta).forEach((key) => {
     if (key.startsWith(mk) && key < todayKey() && S.dayMeta[key].noSpend) priorActiveDays.add(key);
   });
-  const remainingMonth = Math.max(0, S.monthlyBudget - spentBeforeToday);
+  const remainingMonth = Math.max(0, S.monthlyBudget - spentBeforeToday - reservedInstallments);
   const rawSafe = Math.max(0, Math.round(remainingMonth / Math.max(1, daysLeft)));
   const calibrated = priorActiveDays.size > 0;
   const safe = calibrated ? Math.min(rawSafe, Math.round(base * 1.25)) : base;
-  return { safe, base, rawSafe, calibrated, remainingMonth, daysLeft, spentBeforeToday };
+  return { safe, base, rawSafe, calibrated, remainingMonth, daysLeft, spentBeforeToday, reservedInstallments };
 }
 function dayActive(k) {
   return (S.dayMeta[k] && S.dayMeta[k].noSpend) || S.expenses.some((e) => e.dateKey === k);
@@ -158,9 +163,21 @@ function svgUri(key) { return 'data:image/svg+xml;utf8,' + encodeURIComponent(P[
 function initArt(root) {
   (root || document).querySelectorAll('img[data-art]').forEach((img) => {
     const key = img.dataset.art;
-    img.onerror = () => { img.onerror = null; if (P[key]) img.src = svgUri(key); };
+    img.onerror = () => {
+      img.onerror = null;
+      const fallbackKey = key === 'hero-female' ? 'hero' : key;
+      if (P[fallbackKey]) img.src = svgUri(fallbackKey);
+    };
     img.src = `assets/${key}.png`;
   });
+}
+
+function setHeroArt(img, heroType) {
+  const key = heroType === 'female' ? 'hero-female' : 'hero';
+  if (img.dataset.art === key && img.src.includes(`/assets/${key}.png`)) return;
+  img.dataset.art = key;
+  img.onerror = () => { img.onerror = null; img.src = svgUri('hero'); };
+  img.src = `assets/${key}.png`;
 }
 
 /* ===================== SVG icons（避開 emoji） ===================== */
@@ -182,6 +199,11 @@ const I = {
   charm: `<svg viewBox="0 0 24 24" fill="none" stroke="#9d6bff" stroke-width="2" stroke-linecap="round"><path d="M12 3l2.3 4.7 5.2.7-3.8 3.6.9 5.1L12 14.7 7.4 17.1l.9-5.1L4.5 8.4l5.2-.7z" fill="#3a2b6b"/></svg>`,
   cape: `<svg viewBox="0 0 24 24" fill="none" stroke="#ffc93c" stroke-width="2" stroke-linecap="round"><path d="M12 3c-4 0-6 3-6 3l-2 14 5-3 3 4 3-4 5 3-2-14s-2-3-6-3z" fill="#5a4200"/></svg>`,
   check: `<svg viewBox="0 0 24 24" fill="none" stroke="#3ddc84" stroke-width="3" stroke-linecap="round"><path d="M4 13l5 5L20 6"/></svg>`,
+  mic: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0014 0M12 18v3M9 21h6"/></svg>`,
+  send: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2L11 13"/><path d="M22 2l-7 20-4-9-9-4z"/></svg>`,
+  close: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>`,
+  card: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 10h18M7 15h3"/></svg>`,
+  chat: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 12a8 8 0 01-8 8H5l-3 2 1-5a9 9 0 1118-5z"/><path d="M8 12h.01M12 12h.01M16 12h.01"/></svg>`,
 };
 function initIcons(root) {
   (root || document).querySelectorAll('.icon[data-icon]').forEach((el) => {
@@ -292,9 +314,10 @@ function showStatusDialogue() {
   const left = pace.safe - spent;
   const dmg = bossDamage();
   const max = bossMaxHp();
+  const reserveNote = pace.reservedInstallments > 0 ? `本月分期已先留起 ${fmt(pace.reservedInstallments)}。` : '';
   const paceBasis = pace.calibrated
-    ? `呢個數已按本月剩餘 ${fmt(pace.remainingMonth)} 同 ${pace.daysLeft} 日路程調整。`
-    : `暫時先用每日平均 ${fmt(pace.base)}；有一日完整紀錄後，我先開始校準。`;
+    ? `${reserveNote}呢個數已按本月剩餘 ${fmt(pace.remainingMonth)} 同 ${pace.daysLeft} 日路程調整。`
+    : `${reserveNote}暫時先用每日平均 ${fmt(pace.base)}；有一日完整紀錄後，我先開始校準。`;
   const text = left >= 0
     ? `今日記咗 ${logsToday()} 筆，仲有 ${fmt(left)} 可以安心使用。${paceBasis}本週對魔王造成咗 ${fmt(dmg)} 傷害。`
     : `今日記咗 ${logsToday()} 筆，暫時比安心額度多 ${fmt(Math.abs(left))}。唔需要懲罰自己，我哋已經知道情況，之後每一筆都可以重新選擇。`;
@@ -552,20 +575,40 @@ function numpadPress(k) {
 function logExpense(cid, amount, opts) {
   opts = opts || {};
   if (!CATS.some((c) => c.id === cid) || !(amount > 0)) return false;
-  const t = todayKey();
-  const first = logsToday() === 0 && !(S.dayMeta[t] && S.dayMeta[t].noSpend);
+  const requestedDate = String(opts.dateKey || todayKey());
+  const t = /^\d{4}-\d{2}-\d{2}$/.test(requestedDate) ? requestedDate : todayKey();
+  const isToday = t === todayKey();
+  const first = isToday && logsToday() === 0 && !(S.dayMeta[t] && S.dayMeta[t].noSpend);
   const entryId = Date.now();
-  S.expenses.push({ id: entryId, ts: entryId, dateKey: t, cat: cid, amount });
-  if (meta(t).noSpend) { meta(t).noSpend = false; toast('今日零消費標記已取消'); }
-  touchStreak();
-  gainXp(10);
+  S.expenses.push({
+    id: entryId, ts: entryId, dateKey: t, cat: cid, amount: Number(amount),
+    merchant: opts.merchant || null, cardId: opts.cardId || null,
+    installmentId: opts.installmentId || null, intent: opts.intent || null,
+    installmentPaymentIndex: Number.isInteger(opts.installmentPaymentIndex) ? opts.installmentPaymentIndex : null,
+    source: opts.source || 'manual',
+  });
+  if (opts.cardId && opts.source !== 'installment') {
+    const card = S.creditCards.find((item) => item.id === opts.cardId);
+    if (card) card.currentBalance = Number(card.currentBalance || 0) + Number(amount);
+  }
+  if (isToday && meta(t).noSpend) { meta(t).noSpend = false; toast('今日零消費標記已取消'); }
+  if (isToday) {
+    touchStreak();
+    gainXp(10);
+  }
   save();
   renderAll();
-  toast(`已記低 ${fmt(amount)} · XP +10`);
+  toast(isToday ? `已記低 ${fmt(amount)} · XP +10` : `已補記 ${t} · ${fmt(amount)}`);
   softVibrate([8, 30, 8]);
-  setTimeout(() => showExpenseReaction(cid, amount, first, entryId), 80);
-  clearTimeout(pendingChestTimer);
-  pendingChestTimer = setTimeout(() => maybeChest(first), 12000);
+  if (isToday) {
+    clearTimeout(pendingChestTimer);
+    if (!opts.skipDialogue && !opts.intent) {
+      setTimeout(() => showExpenseReaction(cid, amount, first, entryId), 80);
+      pendingChestTimer = setTimeout(() => maybeChest(first), 12000);
+    } else {
+      pendingChestTimer = setTimeout(() => maybeChest(first), 450);
+    }
+  }
   return true;
 }
 function saveSheet() {
@@ -837,6 +880,7 @@ function renderHome() {
   $('scene-date').textContent = new Intl.DateTimeFormat('zh-HK', { month: 'long', day: 'numeric', weekday: 'short' }).format(new Date());
   $('scene-streak-copy').textContent = S.streak > 0 ? `${S.streak} 日同行` : '今日冒險';
   $('hero-name').textContent = S.heroName;
+  setHeroArt($('hero-img'), S.heroType);
   $('hero-img').classList.toggle('cape', S.items.cape > 0);
   // 今日 HP
   const spent = daySpend(todayKey());
@@ -849,13 +893,14 @@ function renderHome() {
   fill.classList.toggle('ok', pct > 40);
   $('hero-hptext').textContent = `${fmt(left)} / ${fmt(pace.safe)}`;
   const paceShift = pace.safe - pace.base;
-  const paceNote = !pace.calibrated
+  const reserveNote = pace.reservedInstallments > 0 ? `已預留本月分期 ${fmt(pace.reservedInstallments)}。` : '';
+  const paceNote = reserveNote + (!pace.calibrated
     ? '先用固定日平均，累積一個完整記錄日後開始校準'
     : paceShift < 0
     ? `按本月餘額，今日比固定平均收細 ${fmt(Math.abs(paceShift))}`
     : paceShift > 0
       ? `本月尚有空間，今日比固定平均多 ${fmt(paceShift)}`
-      : `按本月剩餘 ${pace.daysLeft} 日平均分配`;
+      : `按本月剩餘 ${pace.daysLeft} 日平均分配`);
   $('hero-sub').textContent = rawLeft < 0
     ? `今日比安心額度多 ${fmt(Math.abs(rawLeft))}；唔使補償，下一筆重新選擇。${paceNote}`
     : (dayActive(todayKey()) ? `今日仲有 ${fmt(left)} 可以安心使用。${paceNote}` : `今日未記帳。可安心使用 ${fmt(pace.safe)}，第一筆有必爆寶箱。${paceNote}`);
@@ -1017,12 +1062,28 @@ function renderStats() {
       </div>`).join('')
     : '<p class="tip">未有紀錄，去記低第一筆啦。</p>';
   $('recent-logs').querySelectorAll('[data-del]').forEach((b) => (b.onclick = () => {
-    S.expenses = S.expenses.filter((e) => e.id !== Number(b.dataset.del));
+    const expense = S.expenses.find((entry) => entry.id === Number(b.dataset.del));
+    if (!expense) return;
+    if (expense.source === 'installment' && expense.installmentId) {
+      const plan = S.installments.find((item) => item.id === expense.installmentId);
+      const payment = plan && plan.schedule.find((item) => item.index === expense.installmentPaymentIndex);
+      if (payment) {
+        payment.status = 'planned';
+        payment.paidAt = null;
+        plan.paidMonths = plan.schedule.filter((item) => item.status === 'paid').length;
+      }
+    } else if (expense.cardId) {
+      const card = S.creditCards.find((item) => item.id === expense.cardId);
+      if (card) card.currentBalance = Math.max(0, Number(card.currentBalance || 0) - Number(expense.amount || 0));
+    }
+    S.expenses = S.expenses.filter((entry) => entry.id !== expense.id);
     save(); renderAll();
+    toast('紀錄已刪除，相關結欠同任務進度已同步');
   }));
 }
 function renderAll() {
   renderHud(); renderHome(); renderQuests(); renderShop(); renderStats();
+  if (window.FinanceAdvisor) FinanceAdvisor.render(S);
 }
 
 /* ===================== 導覽 ===================== */
@@ -1034,10 +1095,10 @@ function switchScreen(name) {
 /* ===================== 新手設定（財務問卷 wizard） ===================== */
 let openFinWizard = null;
 function initOnboard() {
-  let step = 0, incomeType = 'fixed', rate = 0.2, debtsDraft = [];
+  let step = 0, heroType = 'male', incomeType = 'fixed', rate = 0.2, debtsDraft = [];
   const steps = document.querySelectorAll('.ob-step');
   const guideLines = [
-    '終於等到你。先話我知，今次旅程想用咩名出發？',
+    '終於等到你。先揀一位同行者，再話我知今次旅程想用咩名出發。',
     '每位勇者補充資源嘅方式都唔同，我會按收入節奏安排任務。',
     '存款就似護甲。唔需要同任何人比較，我只想知道今日由邊度開始。',
     '債務唔係污點，只係地圖上要逐條處理嘅惡龍。我會幫你排好攻擊次序。',
@@ -1055,6 +1116,17 @@ function initOnboard() {
       if (!$('ob-budget').value && inc > 0) $('ob-budget').value = Math.round(inc * 0.6);
     }
   }
+  $('ob-hero-type').querySelectorAll('.hero-choice').forEach((choice) => {
+    choice.onclick = () => {
+      heroType = choice.dataset.heroType;
+      $('ob-hero-type').querySelectorAll('.hero-choice').forEach((item) => {
+        const selected = item === choice;
+        item.classList.toggle('active', selected);
+        item.setAttribute('aria-pressed', String(selected));
+      });
+      softVibrate(6);
+    };
+  });
   function renderDebtsDraft() {
     $('ob-debts').innerHTML = debtsDraft.length
       ? debtsDraft.map((d, i) =>
@@ -1095,6 +1167,7 @@ function initOnboard() {
     const firstTime = !S.onboarded;
     S.onboarded = true;
     S.heroName = $('ob-name').value.trim() || S.heroName || '勇者';
+    S.heroType = heroType;
     S.monthlyBudget = b;
     S.saveRate = rate;
     S.finProfile = {
@@ -1118,6 +1191,12 @@ function initOnboard() {
 
   openFinWizard = () => {
     $('ob-name').value = S.heroName === '勇者' ? '' : S.heroName;
+    heroType = S.heroType === 'female' ? 'female' : 'male';
+    $('ob-hero-type').querySelectorAll('.hero-choice').forEach((choice) => {
+      const selected = choice.dataset.heroType === heroType;
+      choice.classList.toggle('active', selected);
+      choice.setAttribute('aria-pressed', String(selected));
+    });
     if (S.finProfile) {
       incomeType = S.finProfile.incomeType || 'fixed';
       $('ob-income').value = S.finProfile.income || '';
@@ -1162,7 +1241,7 @@ function init() {
   // events
   document.querySelectorAll('.tab').forEach((t) => (t.onclick = () => switchScreen(t.dataset.screen)));
   document.querySelectorAll('[data-screen-jump]').forEach((t) => (t.onclick = () => switchScreen(t.dataset.screenJump)));
-  $('tab-log').onclick = () => openLogSheet('expense');
+  $('tab-log').onclick = () => FinanceAdvisor.open();
   $('btn-log-cta').onclick = () => openLogSheet('expense');
   $('btn-nospend').onclick = markNoSpend;
   $('log-mask').onclick = (e) => { if (e.target === $('log-mask')) closeLogSheet(); };
@@ -1172,6 +1251,18 @@ function init() {
   $('boss-claim').onclick = claimBoss;
   $('btn-editfin').onclick = () => openFinWizard();
   $('btn-shortcut').onclick = showShortcutGuide;
+  FinanceAdvisor.init({
+    getState: () => S,
+    recordExpense: logExpense,
+    commit: () => { save(); renderAll(); },
+    reward: (gold, xp) => { gainGold(gold); gainXp(xp); },
+    toast,
+    vibrate: softVibrate,
+    today: todayKey,
+    month: monthKey,
+    initIcons,
+    speak: (speaker, text) => { switchScreen('home'); speak(speaker, text, sceneChoices(buildObjective())); },
+  });
   initOnboard();
   ensureBoss();
   renderAll();
