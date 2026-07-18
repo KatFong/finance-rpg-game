@@ -9,7 +9,7 @@
 <title>理財勇者</title>
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="assets/hero.png">
-<link rel="stylesheet" href="style.css?v=57">
+<link rel="stylesheet" href="style.css?v=59">
 </head>
 <body data-screen="home">
 
@@ -563,6 +563,20 @@
         <input class="hidden" id="vault-file" type="file" accept="application/json,.json">
       </div>
       <button class="vault-rollback hidden" id="vault-rollback" type="button">還原匯入前嘅上一個存檔</button>
+      <section class="vault-danger" aria-labelledby="vault-danger-title">
+        <div class="vault-danger-head">
+          <div><span>本機資料控制</span><b id="vault-danger-title">離開呢部裝置</b></div>
+          <button class="btn ghost" id="vault-reset-trigger" type="button"><span class="icon" data-icon="trash"></span>清除全部資料</button>
+        </div>
+        <p>會永久刪除呢個瀏覽器內嘅帳目、卡片、目標、RPG 進度同回退存檔。需要保留就先匯出。</p>
+        <form class="vault-reset hidden" id="vault-reset-form">
+          <label><span>輸入勇者名「<b id="vault-reset-name"></b>」確認</span><input id="vault-reset-input" maxlength="40" autocomplete="off" spellcheck="false" required></label>
+          <div class="form-sheet-actions">
+            <button class="btn ghost" id="vault-reset-cancel" type="button">取消</button>
+            <button class="btn danger" type="submit">繼續永久刪除</button>
+          </div>
+        </form>
+      </section>
       <p class="vault-privacy">存檔包含你輸入嘅帳目、卡片資料同遊戲進度。檔案唔會上傳伺服器，請存放喺只有你可以開啟嘅位置；App 亦唔會將 API 設定寫入存檔。</p>
     </div>
     <div class="vault-preview hidden" id="vault-preview">
@@ -775,11 +789,11 @@
 <div id="toast" class="hidden"></div>
 
 <script>window.FRPG_CONFIG = { advisorApiUrl: '' };</script>
-<script src="vault.js?v=57"></script>
-<script src="gameplay.js?v=57"></script>
-<script src="cashflow.js?v=57"></script>
-<script src="ledger.js?v=57"></script>
-<script src="advisor.js?v=57"></script>
-<script src="app.js?v=57"></script>
+<script src="vault.js?v=59"></script>
+<script src="gameplay.js?v=59"></script>
+<script src="cashflow.js?v=59"></script>
+<script src="ledger.js?v=59"></script>
+<script src="advisor.js?v=59"></script>
+<script src="app.js?v=59"></script>
 </body>
 </html>

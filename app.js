@@ -1843,11 +1843,56 @@ function renderVault() {
   $('vault-rollback').classList.toggle('hidden', !rollbackAvailable);
 }
 
+function cancelVaultReset() {
+  $('vault-reset-form').classList.add('hidden');
+  $('vault-reset-trigger').classList.remove('hidden');
+  $('vault-reset-input').value = '';
+}
+
+function openVaultReset() {
+  $('vault-reset-name').textContent = S.heroName || '勇者';
+  $('vault-reset-input').value = '';
+  $('vault-reset-trigger').classList.add('hidden');
+  $('vault-reset-form').classList.remove('hidden');
+  setTimeout(() => $('vault-reset-input').focus(), 80);
+}
+
+function clearLocalAdventure() {
+  try {
+    localStorage.removeItem(LS_KEY);
+    localStorage.removeItem(ROLLBACK_KEY);
+  } catch (error) {
+    toast('未能清除瀏覽器資料，請檢查私隱設定');
+    return;
+  }
+  try {
+    Object.keys(sessionStorage).filter((key) => key.startsWith('finance-rpg-')).forEach((key) => sessionStorage.removeItem(key));
+  } catch (error) {}
+  location.reload();
+}
+
+function confirmVaultReset(event) {
+  event.preventDefault();
+  const expected = S.heroName || '勇者';
+  if ($('vault-reset-input').value.trim() !== expected) {
+    toast(`請完整輸入「${expected}」`);
+    return;
+  }
+  closeVault();
+  popup('永久刪除所有資料？', `<p class="confirm-copy"><b>${escapeHtml(expected)} 嘅本機冒險會完全清空。</b><br>呢一步冇回退；只有已匯出嘅存檔可以復原。</p>`, {
+    confirmLabel: '永久刪除',
+    cancelLabel: '保留資料',
+    onConfirm: clearLocalAdventure,
+    onCancel: openVault,
+  });
+}
+
 function openVault() {
   pendingVaultBackup = null;
   $('vault-preview').classList.add('hidden');
   $('vault-main').classList.remove('hidden');
   $('vault-file').value = '';
+  cancelVaultReset();
   renderVault();
   $('vault-mask').classList.remove('hidden');
 }
@@ -3968,6 +4013,9 @@ function init() {
   $('vault-preview-cancel').onclick = cancelVaultPreview;
   $('vault-restore').onclick = restoreVault;
   $('vault-rollback').onclick = restoreVaultRollback;
+  $('vault-reset-trigger').onclick = openVaultReset;
+  $('vault-reset-cancel').onclick = cancelVaultReset;
+  $('vault-reset-form').onsubmit = confirmVaultReset;
   $('goal-form').onsubmit = saveGoalForm;
   $('goal-form-close').onclick = closeGoalForm;
   $('goal-form-cancel').onclick = closeGoalForm;
