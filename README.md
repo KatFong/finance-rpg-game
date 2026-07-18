@@ -2,7 +2,7 @@
 
 手機優先嘅個人理財 RPG。用真實記帳行為驅動遊戲：記支出＝儲 XP／爆寶箱，每日預算＝角色 HP，每週儲蓄目標＝慾望魔王血量。日常財務資料存喺 localStorage，唔使註冊。
 
-開場係可重播嘅全屏 RPG 序章：Title Screen → loading 轉場 → 軍師逐句對話與情境換圖 → 單題回答面板 → 男／女勇者與命名 → 第一個財務主線任務。文字完成前下一步按鈕會鎖定，每組資料只會喺相應對話後由底部彈出；舊存檔可以喺統計頁重播序章或隨時切換角色。
+開場係可重播嘅全屏 RPG 序章：Title Screen → loading 轉場 → 軍師逐句對話與情境換圖 → 單題回答面板 → 男／女勇者與命名 → 第一個真實記帳行動。文字完成前下一步按鈕會鎖定，每組資料只會喺相應對話後由底部彈出；舊存檔可以喺手帳重播序章或隨時切換角色。
 
 ## 執行
 
@@ -11,21 +11,23 @@ python3 -m http.server 3900 --directory /Users/kat/finance-rpg-game
 # 開 http://localhost:3900（手機 viewport）
 ```
 
-## 上癮迴路設計（人性邏輯）
+## 低壓核心循環
 
-| 機制 | 心理原理 |
+| 玩家時刻 | 設計回應 |
 |---|---|
-| 3 下點擊完成記帳 | 極低行動門檻（Fogg B=MAT） |
-| 記帳隨機爆寶箱、金幣隨機 | 變動獎勵（老虎機效應） |
-| 每日預算＝HP、超支扣血 | 損失規避 |
-| 連勝 streak + 護盾道具 | 唔捨得斷、sunk cost |
-| 每週魔王、每日傷害上限（血量 1/5） | 迫每週最少返嚟 5 日 |
-| 唔記帳嗰日唔計魔王傷害 | 防止「唔記＝儲晒」嘅漏洞 |
-| 金幣買裝備（劍/咒文/護盾/披風） | 投入感、長期目標 |
+| 打開 App | 第一屏先答「今日仲有幾多可以安心使用」 |
+| 記唔清楚 | 用一句廣東話或語音講，軍師逐項追問 |
+| 資料複雜 | 先整理成卷軸，玩家確認後先正式入帳 |
+| 今日超出步速 | 顯示現況但唔扣分、唔要求補償，下一筆重新選擇 |
+| 中斷幾日 | 歡迎返嚟，由眼前一筆重新開始，過去進度唔會消失 |
+| 完成小行動 | XP、金幣、寶箱同週目標提供即時但非懲罰式回饋 |
+| 想看全貌 | 手帳分成總覽、信用卡、紀錄，避免一頁塞晒所有資料 |
+
+首頁四項戰況對應個人財務健康：日常掌控、應急護甲、目標進度同自主空間。設計參考 [CFPB Financial Well-Being](https://www.consumerfinance.gov/consumer-tools/educator-tools/financial-well-being-resources/)、[Apple Onboarding](https://developer.apple.com/design/human-interface-guidelines/onboarding) 同 [Apple Designing for Games](https://developer.apple.com/design/human-interface-guidelines/designing-for-games/)；原則係先用真實行動教識玩家、容許犯錯，並將下一步講清楚。
 
 ## 財務問卷 + 資產負債遊戲化
 
-開檔問卷（可隨時喺 統計 →「更新財務檔案」重新填）：
+開檔問卷（可隨時喺 手帳 →「更新財務檔案」重新填）：
 - 收入型態（固定月薪／浮動收入）＋每月收入
 - 存款 → **護甲**（布衣 <1 個月 → 皮甲 → 鐵甲 → 龍鱗甲 6 個月+）
 - 債務 → **惡龍**（每筆債一條，HP＝餘額）
@@ -37,12 +39,13 @@ python3 -m http.server 3900 --directory /Users/kat/finance-rpg-game
 
 支援 URL 快速入帳：`http://<host>:3900/?add=<分類>:<銀碼>`（例 `?add=food:45`）。
 分類：food／transport／shopping／fun／bills／other。
-App 內 統計 →「Apple Shortcuts 快速入帳」有逐步教學（要求輸入 → 選單 → 開啟 URL）。
+App 內 手帳 →「Apple Shortcuts 快速入帳」有逐步教學（要求輸入 → 選單 → 開啟 URL）。
 iPhone 用法：同 Mac 同一 Wi-Fi 用 Mac IP，或者 host 上 GitHub Pages（資料照存手機 localStorage）。
 
 ## 信用卡迷宮 + 分期任務
 
 - 每張卡可以記錄尾數、信用額、現時結欠、截數日、還款日同 APR。
+- 信用卡頁先顯示最近要處理嘅日期、金額同距離日數；資料未齊時會直接指出缺口。
 - 分期支援本金、總期數、已供期數、APR、每期手續費、已知每期金額同第一期日期。
 - 供款表由 `advisor.js` 本機確定性計算；AI 只整理草稿，唔負責計息或直接寫資料。
 - 每期供款會預留喺本月安心額度；繳付後推進任務線，還卡數只減結欠，唔會重複當成新消費。

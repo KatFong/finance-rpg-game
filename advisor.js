@@ -6,7 +6,7 @@
   'use strict';
 
   const CATEGORY_NAMES = {
-    food: '餐飲', transport: '交通', shopping: '購物',
+    food: '餐飲／超市', transport: '交通', shopping: '購物',
     fun: '娛樂', bills: '帳單', other: '其他',
   };
   const INTENT_NAMES = { need: '生活必需', joy: '值得享受', impulse: '一時衝動' };
@@ -41,6 +41,33 @@
     const lastDay = new Date(target.getFullYear(), target.getMonth() + 1, 0).getDate();
     target.setDate(Math.min(day, lastDay));
     return `${target.getFullYear()}-${String(target.getMonth() + 1).padStart(2, '0')}-${String(target.getDate()).padStart(2, '0')}`;
+  }
+
+  function nextMonthlyDate(day, todayKey) {
+    const dueDay = Number(day);
+    if (!(dueDay >= 1 && dueDay <= 31)) return null;
+    const [year, month] = todayKey.split('-').map(Number);
+    const build = (offset) => {
+      const base = new Date(year, month - 1 + offset, 1);
+      const last = new Date(base.getFullYear(), base.getMonth() + 1, 0).getDate();
+      const targetDay = Math.min(dueDay, last);
+      return `${base.getFullYear()}-${String(base.getMonth() + 1).padStart(2, '0')}-${String(targetDay).padStart(2, '0')}`;
+    };
+    const current = build(0);
+    return current >= todayKey ? current : build(1);
+  }
+
+  function daysUntil(dateKey, todayKey) {
+    const toUtc = (key) => {
+      const [year, month, day] = key.split('-').map(Number);
+      return Date.UTC(year, month - 1, day);
+    };
+    return Math.max(0, Math.round((toUtc(dateKey) - toUtc(todayKey)) / 86400000));
+  }
+
+  function shortDate(dateKey) {
+    const [, month, day] = dateKey.split('-').map(Number);
+    return `${month}月${day}日`;
   }
 
   function buildInstallmentSchedule(input) {
@@ -130,11 +157,11 @@
   }
 
   function detectCategory(text) {
-    if (/食|餐|飯|早餐|午餐|晚餐|咖啡|茶/.test(text)) return 'food';
-    if (/車|巴士|地鐵|的士|交通|油費|泊車/.test(text)) return 'transport';
-    if (/買|購物|衫|鞋|電器|電腦|手機/.test(text)) return 'shopping';
-    if (/戲|遊戲|娛樂|旅行|唱K|演唱會/.test(text)) return 'fun';
-    if (/帳單|水費|電費|煤氣|電話|上網|月費|供款|分期/.test(text)) return 'bills';
+    if (/食|餐|飯|早餐|午餐|晚餐|咖啡|茶|超市|街市|百佳|惠康|便利店|759|donki/i.test(text)) return 'food';
+    if (/車|巴士|地鐵|港鐵|的士|交通|油費|泊車|八達通|uber/i.test(text)) return 'transport';
+    if (/買|購物|衫|鞋|電器|電腦|手機|網購|淘寶|amazon/i.test(text)) return 'shopping';
+    if (/戲|遊戲|娛樂|旅行|唱K|演唱會|netflix|spotify/i.test(text)) return 'fun';
+    if (/帳單|水費|電費|煤氣|電話|上網|月費|供款|分期|租金|管理費|保險/.test(text)) return 'bills';
     return 'other';
   }
 
@@ -152,9 +179,10 @@
   }
 
   function extractCardName(text, cards) {
-    const existing = (cards || []).find((card) => text.includes(card.name) || (card.last4 && text.includes(card.last4)));
+    const compactText = text.replace(/\s+/g, '');
+    const existing = (cards || []).find((card) => compactText.includes(String(card.name || '').replace(/\s+/g, '')) || (card.last4 && compactText.includes(card.last4)));
     if (existing) return { cardId: existing.id, cardName: existing.name };
-    const match = text.match(/([\u3400-\u9fffA-Za-z0-9]{1,12}(?:信用卡|卡))/u);
+    const match = compactText.match(/([\u3400-\u9fffA-Za-z0-9]{1,16}(?:信用卡|卡))/u);
     if (!match) return { cardId: null, cardName: null };
     const cardName = match[1].replace(/^(?:(?:我想|幫我|新增|建立|開|一張|張))+/, '');
     return /^(?:信用卡|卡)$/.test(cardName)
@@ -578,14 +606,14 @@
     recognition.onend = () => {
       listening = false;
       mic.classList.remove('listening');
-      $('advisor-input').placeholder = '同軍師講...';
+      $('advisor-input').placeholder = '例：啱啱超市 $248，用恒生卡';
       $('advisor-input').focus();
     };
   }
 
   function open(prompt) {
     $('advisor-mask').classList.remove('hidden');
-    if (!messages.length) addMessage('assistant', '我喺度。今次想整理邊段財務冒險？');
+    if (!messages.length) addMessage('assistant', '直接講發生咗咩就得，例如「啱啱超市 $248，用恒生卡」。資料唔齊我會逐樣問清楚，俾你確認後先正式記錄。');
     renderMessages();
     if (prompt) submitMessage(prompt);
     else $('advisor-input').focus();
@@ -626,9 +654,11 @@
   function render(state) {
     const summary = $('credit-summary');
     const list = $('credit-list');
-    if (!summary || !list) return;
+    const priority = $('credit-priority');
+    if (!summary || !list || !priority) return;
     const cards = state.creditCards || [];
     const plans = state.installments || [];
+    const today = bridge.today();
     const remaining = roundMoney(plans.reduce((sum, plan) => sum + (plan.schedule || [])
       .filter((payment) => payment.status !== 'paid').reduce((subtotal, payment) => subtotal + payment.amount, 0), 0));
     const thisMonth = monthReserved(state, bridge.month());
@@ -636,6 +666,50 @@
       <div class="stat-box"><div class="v">${cards.length}</div><div class="k">迷宮入口</div></div>
       <div class="stat-box"><div class="v">${fmt(thisMonth)}</div><div class="k">本月待守供款</div></div>
       <div class="stat-box wide"><div class="v">${fmt(remaining)}</div><div class="k">分期任務剩餘總供款</div></div>`;
+    const priorities = [];
+    plans.forEach((plan) => {
+      const next = (plan.schedule || []).find((payment) => payment.status !== 'paid');
+      if (!next) return;
+      const card = cards.find((item) => item.id === plan.cardId);
+      priorities.push({
+        date: next.dueDate,
+        amount: next.amount,
+        amountLabel: '本期供款',
+        title: `${plan.title} 第 ${next.index + 1} 期`,
+        prompt: `我想處理 ${card ? card.name : ''} ${plan.title} 下一期供款`,
+      });
+    });
+    cards.forEach((card) => {
+      if (!(Number(card.currentBalance || 0) > 0)) return;
+      const date = nextMonthlyDate(card.dueDay, today);
+      if (!date) return;
+      priorities.push({
+        date,
+        amount: card.currentBalance,
+        amountLabel: '目前結欠',
+        title: `${card.name} 還款日檢查`,
+        prompt: `我想處理 ${card.name} 嘅本期還款`,
+      });
+    });
+    priorities.sort((a, b) => a.date.localeCompare(b.date));
+    const nextPriority = priorities[0];
+    if (!cards.length) {
+      priority.className = 'credit-priority needs-info';
+      priority.innerHTML = '<div><span>尚未設定</span><b>先建立第一個信用卡入口</b><p>軍師會逐項問清楚結欠、截數日、還款日同利率。</p></div><button class="btn small primary" id="credit-priority-action">開始整理</button>';
+      $('credit-priority-action').onclick = () => open('我想新增一張信用卡');
+    } else if (nextPriority) {
+      const days = daysUntil(nextPriority.date, today);
+      priority.className = `credit-priority${days <= 7 ? ' urgent' : ''}`;
+      priority.innerHTML = `<div><span>${days === 0 ? '今日要處理' : `最近行動 · ${days} 日後`}</span><b>${escapeHtml(nextPriority.title)}</b><p>${shortDate(nextPriority.date)} · ${nextPriority.amountLabel} ${fmt(nextPriority.amount)}</p></div><button class="btn small primary" id="credit-priority-action">同軍師處理</button>`;
+      $('credit-priority-action').onclick = () => open(nextPriority.prompt);
+    } else if (cards.some((card) => !card.dueDay)) {
+      priority.className = 'credit-priority needs-info';
+      priority.innerHTML = '<div><span>資料缺口</span><b>補上每張卡嘅還款日</b><p>軍師會逐項問，唔使一次過記得晒。</p></div><button class="btn small ghost" id="credit-priority-action">補資料</button>';
+      $('credit-priority-action').onclick = () => open('幫我補齊信用卡還款日');
+    } else {
+      priority.className = 'credit-priority clear';
+      priority.innerHTML = '<div><span>眼前安全</span><b>暫時冇待處理供款</b><p>有新卡數或分期時，直接同軍師講。</p></div>';
+    }
     if (!cards.length) {
       list.innerHTML = '<div class="credit-empty"><b>未有信用卡迷宮</b><p>軍師可以用對話逐項整理帳戶同分期資料。</p><button class="btn small primary" id="credit-empty-add">召喚軍師</button></div>';
       $('credit-empty-add').onclick = () => open('我想新增一張信用卡');
@@ -646,6 +720,10 @@
       const outstanding = roundMoney(cardPlans.reduce((sum, plan) => sum + (plan.schedule || [])
         .filter((payment) => payment.status !== 'paid').reduce((subtotal, payment) => subtotal + payment.principal, 0), 0) + Number(card.currentBalance || 0));
       const utilization = card.creditLimit ? Math.min(100, outstanding / card.creditLimit * 100) : 0;
+      const nextPlanPayment = cardPlans.map((plan) => (plan.schedule || []).find((payment) => payment.status !== 'paid')).filter(Boolean).sort((a, b) => a.dueDate.localeCompare(b.dueDate))[0];
+      const nextDate = nextPlanPayment ? nextPlanPayment.dueDate : nextMonthlyDate(card.dueDay, today);
+      const nextDays = nextDate ? daysUntil(nextDate, today) : null;
+      const rateWarning = Number(card.annualRate || 0) >= 30 ? '<span class="credit-rate-warning">高息卡：先避免新增循環結欠</span>' : '';
       const planRows = cardPlans.length ? cardPlans.map((plan) => {
         const next = (plan.schedule || []).find((payment) => payment.status !== 'paid');
         const pct = Math.round(plan.paidMonths / plan.termMonths * 100);
@@ -658,7 +736,9 @@
       }).join('') : '<p class="credit-no-plan">未有分期任務。</p>';
       return `<article class="credit-card-item">
         <div class="credit-card-head"><div><span>信用卡迷宮</span><h4>${escapeHtml(card.name)} ${card.last4 ? `•••• ${escapeHtml(card.last4)}` : ''}</h4></div><button class="icon-btn" data-card-chat="${escapeHtml(card.id)}" aria-label="同軍師處理${escapeHtml(card.name)}" title="同軍師處理"><span class="icon" data-icon="chat"></span></button></div>
-        <div class="credit-metrics"><div><span>待還本金</span><b>${fmt(outstanding)}</b></div><div><span>APR</span><b>${card.annualRate == null ? '未知' : `${card.annualRate}%`}</b></div><div><span>截數／還款</span><b>${card.statementDay || '?'}／${card.dueDay || '?'}</b></div></div>
+        <div class="credit-next${nextDays != null && nextDays <= 7 ? ' urgent' : ''}"><span>下一步</span><b>${nextDate ? `${shortDate(nextDate)} · ${nextDays === 0 ? '今日' : `${nextDays} 日後`}` : '補上還款日'}</b></div>
+        <div class="credit-metrics"><div><span>卡片＋分期結欠</span><b>${fmt(outstanding)}</b></div><div><span>年利率 APR</span><b>${card.annualRate == null ? '未知' : `${card.annualRate}%`}</b></div><div><span>每月截數／還款</span><b>${card.statementDay || '?'} 日／${card.dueDay || '?'} 日</b></div></div>
+        ${rateWarning}
         ${card.creditLimit ? `<div class="credit-util"><span>額度使用</span><b>${Math.round(utilization)}%</b><div><i style="width:${utilization}%"></i></div></div>` : ''}
         <div class="installment-list">${planRows}</div>
       </article>`;

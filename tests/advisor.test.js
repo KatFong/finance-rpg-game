@@ -96,10 +96,31 @@ test('classifies a card repayment separately from spending', () => {
   assert.equal(result.draft.amount, 500);
 });
 
+test('recognizes a supermarket purchase as food and groceries', () => {
+  const result = localAdvisorTurn([
+    { role: 'user', content: '啱啱超市 $248' },
+  ], context);
+  assert.equal(result.status, 'draft');
+  assert.equal(result.draft.kind, 'expense');
+  assert.equal(result.draft.category, 'food');
+  assert.equal(result.draft.amount, 248);
+});
+
 test('requires an opening balance when creating a card', () => {
   const result = localAdvisorTurn([
     { role: 'user', content: '新增中銀卡，截數日 5，還款日 25，APR 35%' },
   ], { today: '2026-07-18', cards: [] });
   assert.equal(result.status, 'clarify');
   assert.ok(result.missingFields.some((field) => field.startsWith('現時結欠')));
+});
+
+test('creates a complete credit card draft when the spoken name contains spaces', () => {
+  const result = localAdvisorTurn([
+    { role: 'user', content: '新增恒生 Visa 卡，尾數 1234，額度 $20000，現時結欠 $3500，截數日 5，還款日 25，APR 35%' },
+  ], { today: '2026-07-19', cards: [] });
+  assert.equal(result.status, 'draft');
+  assert.equal(result.draft.kind, 'credit_card');
+  assert.equal(result.draft.cardName, '恒生Visa卡');
+  assert.equal(result.draft.currentBalance, 3500);
+  assert.equal(result.draft.dueDay, 25);
 });

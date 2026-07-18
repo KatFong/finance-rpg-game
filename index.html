@@ -9,7 +9,7 @@
 <title>理財勇者</title>
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="assets/hero.png">
-<link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="style.css?v=18">
 </head>
 <body>
 
@@ -28,6 +28,13 @@
     <div class="scene-head">
       <div class="day-chip"><span id="scene-period">早晨</span><b id="scene-date"></b></div>
       <div class="scene-streak"><span class="icon" data-icon="flame"></span><span id="scene-streak-copy">今日冒險</span></div>
+    </div>
+
+    <div class="today-command" id="today-command">
+      <div class="command-kicker"><span>今日可安心使用</span><b id="budget-status">等待第一步</b></div>
+      <div class="command-amount"><strong id="today-safe-amount">$0</strong><span id="today-spent-copy">今日未記帳</span></div>
+      <div class="hpbar hero-hp"><div id="hero-hpfill"></div><span id="hero-hptext"></span></div>
+      <p class="hero-sub" id="hero-sub"></p>
     </div>
 
     <div class="boss-card" id="boss-card">
@@ -57,16 +64,20 @@
   </section>
 
   <section class="today-deck">
-    <div class="budget-card">
-      <div class="budget-copy"><span>今日可安心使用</span><b id="budget-status">狀態良好</b></div>
-      <div class="hpbar hero-hp"><div id="hero-hpfill"></div><span id="hero-hptext"></span></div>
-      <div class="hero-sub" id="hero-sub"></div>
-      <div class="armor-line" id="armor-line"></div>
+    <div class="home-actions">
+      <button class="btn primary big" id="btn-log-cta"><span class="icon" data-icon="plus"></span>記眼前一筆</button>
+      <button class="btn ghost" id="btn-nospend"><span class="icon" data-icon="check"></span>今日零消費</button>
     </div>
 
-    <div class="home-actions">
-      <button class="btn primary big" id="btn-log-cta"><span class="icon" data-icon="plus"></span>記一筆支出</button>
-      <button class="btn ghost" id="btn-nospend"><span class="icon" data-icon="check"></span>今日零消費</button>
+    <div class="wellbeing-panel" aria-label="理財四項戰況">
+      <div class="wellbeing-head"><span>你的生活戰況</span><b>不是分數，是方向</b></div>
+      <div class="wellbeing-grid">
+        <div><span>日常掌控</span><b id="wellbeing-control">未開始</b></div>
+        <div><span>應急護甲</span><b id="wellbeing-resilience">0 個月</b></div>
+        <div><span>目標進度</span><b id="wellbeing-goal">0%</b></div>
+        <div><span>自主空間</span><b id="wellbeing-freedom">$0</b></div>
+      </div>
+      <p class="armor-line" id="armor-line"></p>
     </div>
 
     <div class="objective-card" id="objective-card">
@@ -112,32 +123,44 @@
 <!-- ===== 統計 ===== -->
 <main id="screen-stats" class="screen">
   <div class="page-head"><span>冒險手帳</span><h2 class="sec-title">理財戰績</h2><p>唔只睇數字，仲睇到你一步步建立緊嘅生活節奏。</p></div>
-  <div class="stat-summary" id="stat-summary"></div>
-  <h3 class="sec-sub">資產負債（勇者屬性）</h3>
-  <div class="stat-summary three" id="bs-summary"></div>
-  <div class="stack-btns">
-    <button class="btn ghost" id="btn-editfin">更新財務檔案</button>
-    <button class="btn ghost" id="btn-shortcut">Apple Shortcuts 快速入帳</button>
-    <button class="btn ghost replay-btn" id="btn-replay-intro"><span class="icon" data-icon="play"></span>重播序章</button>
+  <div class="stats-tabs" role="tablist" aria-label="手帳分類">
+    <button class="active" role="tab" aria-selected="true" data-stats-view="overview">總覽</button>
+    <button role="tab" aria-selected="false" data-stats-view="cards">信用卡</button>
+    <button role="tab" aria-selected="false" data-stats-view="history">紀錄</button>
   </div>
-  <div class="section-line"><h3 class="sec-sub">信用卡迷宮</h3><button class="btn small ghost" id="btn-card-advisor"><span class="icon" data-icon="chat"></span>找軍師</button></div>
-  <div class="stat-summary three" id="credit-summary"></div>
-  <div id="credit-list" class="credit-list"></div>
-  <h3 class="sec-sub">最近 7 日開支</h3>
-  <div class="chart7" id="chart7"></div>
-  <h3 class="sec-sub">本月分類開支</h3>
-  <div id="cat-bars"></div>
-  <h3 class="sec-sub">最近紀錄</h3>
-  <div id="recent-logs"></div>
+  <section class="stats-view active" id="stats-overview" data-stats-panel="overview">
+    <div class="stat-summary" id="stat-summary"></div>
+    <h3 class="sec-sub">資產負債（勇者屬性）</h3>
+    <div class="stat-summary three" id="bs-summary"></div>
+    <h3 class="sec-sub">最近 7 日開支</h3>
+    <div class="chart7" id="chart7"></div>
+    <h3 class="sec-sub">本月分類開支</h3>
+    <div id="cat-bars"></div>
+    <div class="stack-btns">
+      <button class="btn ghost" id="btn-editfin">更新財務檔案</button>
+      <button class="btn ghost" id="btn-shortcut">Apple Shortcuts 快速入帳</button>
+      <button class="btn ghost replay-btn" id="btn-replay-intro"><span class="icon" data-icon="play"></span>重播序章</button>
+    </div>
+  </section>
+  <section class="stats-view" id="stats-cards" data-stats-panel="cards">
+    <div class="section-line"><h3 class="sec-sub">信用卡迷宮</h3><button class="btn small ghost" id="btn-card-advisor"><span class="icon" data-icon="chat"></span>找軍師</button></div>
+    <div class="credit-priority" id="credit-priority"></div>
+    <div class="stat-summary three" id="credit-summary"></div>
+    <div id="credit-list" class="credit-list"></div>
+  </section>
+  <section class="stats-view" id="stats-history" data-stats-panel="history">
+    <div class="history-head"><div><span>最近足印</span><h3 class="sec-sub">記帳紀錄</h3></div><button class="btn small primary" id="btn-history-add"><span class="icon" data-icon="plus"></span>記一筆</button></div>
+    <div id="recent-logs"></div>
+  </section>
 </main>
 
 <!-- ===== 底部導覽 ===== -->
 <nav id="tabbar">
-  <button class="tab active" data-screen="home"><span class="icon" data-icon="swords"></span>冒險</button>
+  <button class="tab active" data-screen="home"><span class="icon" data-icon="swords"></span>今日</button>
   <button class="tab" data-screen="quests"><span class="icon" data-icon="scroll"></span>任務</button>
-  <button id="tab-log" aria-label="軍師對話"><span class="icon" data-icon="mic"></span></button>
-  <button class="tab" data-screen="shop"><span class="icon" data-icon="bag"></span>商店</button>
-  <button class="tab" data-screen="stats"><span class="icon" data-icon="chart"></span>統計</button>
+  <button id="tab-log" aria-label="對話或語音記帳"><span class="icon" data-icon="mic"></span><span>記帳</span></button>
+  <button class="tab" data-screen="shop"><span class="icon" data-icon="bag"></span>裝備</button>
+  <button class="tab" data-screen="stats"><span class="icon" data-icon="chart"></span>手帳</button>
 </nav>
 
 <!-- ===== 記帳面板 ===== -->
@@ -171,14 +194,14 @@
     <div class="advisor-messages" id="advisor-messages" aria-live="polite"></div>
     <div class="advisor-thinking hidden" id="advisor-thinking"><i></i><i></i><i></i><span>軍師整理中</span></div>
     <div class="advisor-prompts">
-      <button data-advisor-prompt="我想記一筆支出">記支出</button>
-      <button data-advisor-prompt="我想新增一張信用卡">信用卡</button>
-      <button data-advisor-prompt="我想記錄一個分期計劃">分期任務</button>
+      <button data-advisor-prompt="我想記一筆支出">記眼前一筆</button>
+      <button data-advisor-prompt="我想更新信用卡資料">更新信用卡</button>
+      <button data-advisor-prompt="我想記錄一個分期計劃">新增分期</button>
     </div>
     <div class="advisor-draft hidden" id="advisor-draft"></div>
     <div class="advisor-composer">
       <button class="icon-btn mic-btn" id="advisor-mic" aria-label="開始語音輸入" title="語音輸入"><span class="icon" data-icon="mic"></span></button>
-      <textarea id="advisor-input" rows="1" maxlength="1200" placeholder="同軍師講..."></textarea>
+      <textarea id="advisor-input" rows="1" maxlength="1200" placeholder="例：啱啱超市 $248，用恒生卡"></textarea>
       <button class="icon-btn send-btn" id="advisor-send" aria-label="傳送訊息" title="傳送"><span class="icon" data-icon="send"></span></button>
     </div>
   </div>
@@ -200,7 +223,10 @@
   <div class="modal" id="pop-box">
     <h3 id="pop-title"></h3>
     <div id="pop-body"></div>
-    <button class="btn primary" id="pop-close">好</button>
+    <div class="modal-actions">
+      <button class="btn ghost hidden" id="pop-cancel">取消</button>
+      <button class="btn primary" id="pop-close">好</button>
+    </div>
   </div>
 </div>
 
@@ -320,7 +346,7 @@
 <div id="toast" class="hidden"></div>
 
 <script>window.FRPG_CONFIG = { advisorApiUrl: '' };</script>
-<script src="advisor.js"></script>
-<script src="app.js"></script>
+<script src="advisor.js?v=18"></script>
+<script src="app.js?v=18"></script>
 </body>
 </html>

@@ -5,7 +5,7 @@
 const LS_KEY = 'frpg_v1';
 
 const CATS = [
-  { id: 'food', name: '餐飲' },
+  { id: 'food', name: '餐飲／超市' },
   { id: 'transport', name: '交通' },
   { id: 'shopping', name: '購物' },
   { id: 'fun', name: '娛樂' },
@@ -27,9 +27,9 @@ const SHOP = [
 ];
 
 const QUESTS = [
-  { id: 'q_log', name: '記低 3 筆支出', target: 3, gold: 30 },
-  { id: 'q_chest', name: '打開 1 個寶箱', target: 1, gold: 20 },
-  { id: 'q_save', name: '今日開支保持喺安心額度內', target: 1, gold: 40 },
+  { id: 'q_checkin', outcome: '日常掌控', name: '完成今日 Check-in', desc: '記一筆，或者確認今日零消費。', target: 1, gold: 20 },
+  { id: 'q_log', outcome: '看見全貌', name: '補上 3 個金流足印', desc: '唔求完美，只係令今日輪廓清楚一點。', target: 3, gold: 30 },
+  { id: 'q_story', outcome: '有意識選擇', name: '為一筆補上消費故事', desc: '分清生活需要、值得享受，或者一時衝動。', target: 1, gold: 40 },
 ];
 
 /* ===================== 狀態 ===================== */
@@ -204,6 +204,7 @@ const I = {
   close: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>`,
   card: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 10h18M7 15h3"/></svg>`,
   chat: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 12a8 8 0 01-8 8H5l-3 2 1-5a9 9 0 1118-5z"/><path d="M8 12h.01M12 12h.01M16 12h.01"/></svg>`,
+  trash: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7h16M9 7V4h6v3M7 7l1 13h8l1-13M10 11v5M14 11v5"/></svg>`,
   play: `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5.5v13a1 1 0 001.55.83l9-6.5a1 1 0 000-1.66l-9-6.5A1 1 0 008 5.5z"/></svg>`,
 };
 function initIcons(root) {
@@ -290,7 +291,6 @@ function sceneChoices(objective) {
   return [
     { label: objective.label, primary: true, action: objective.action },
     { label: '問軍師', action: showAdviceDialogue },
-    { label: '今日狀況', action: showStatusDialogue },
   ];
 }
 
@@ -303,7 +303,6 @@ function showAdviceDialogue() {
     : '你已經打好基礎。依家最重要係維持每日記帳，等每一個小決定都有跡可尋。';
   speak('錢錢軍師', text, [
     { label: '照住做', primary: true, action: objective.action },
-    { label: '睇每日任務', action: () => switchScreen('quests') },
     { label: '返回', action: () => renderSceneDialogue(true) },
   ]);
 }
@@ -324,7 +323,6 @@ function showStatusDialogue() {
     : `今日記咗 ${logsToday()} 筆，暫時比安心額度多 ${fmt(Math.abs(left))}。唔需要懲罰自己，我哋已經知道情況，之後每一筆都可以重新選擇。`;
   speak('錢錢軍師', text, [
     { label: '記一筆', primary: true, action: () => openLogSheet('expense') },
-    { label: '睇戰績', action: () => switchScreen('stats') },
     { label: '返回', action: () => renderSceneDialogue(true) },
   ]);
 }
@@ -405,9 +403,26 @@ function toast(msg) {
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => t.classList.add('hidden'), 2200);
 }
-function popup(title, bodyHtml) {
+function closePopup() {
+  $('pop-mask').classList.add('hidden');
+}
+function popup(title, bodyHtml, options) {
+  const settings = options || {};
+  const confirm = $('pop-close');
+  const cancel = $('pop-cancel');
   $('pop-title').textContent = title;
   $('pop-body').innerHTML = bodyHtml;
+  confirm.textContent = settings.confirmLabel || '好';
+  cancel.textContent = settings.cancelLabel || '取消';
+  cancel.classList.toggle('hidden', !settings.cancelLabel);
+  confirm.onclick = () => {
+    closePopup();
+    if (settings.onConfirm) settings.onConfirm();
+  };
+  cancel.onclick = () => {
+    closePopup();
+    if (settings.onCancel) settings.onCancel();
+  };
   $('pop-mask').classList.remove('hidden');
   initArt($('pop-box')); initIcons($('pop-box'));
 }
@@ -667,9 +682,9 @@ function markNoSpend() {
 /* ===================== 任務 ===================== */
 function questProgress(q) {
   const t = todayKey(), m = meta(t);
-  if (q.id === 'q_log') return Math.min(q.target, logsToday());
-  if (q.id === 'q_chest') return Math.min(q.target, m.chests);
-  if (q.id === 'q_save') return (dayActive(t) && daySpend(t) <= safeToSpendToday().safe) ? 1 : 0;
+  if (q.id === 'q_checkin') return dayActive(t) ? 1 : 0;
+  if (q.id === 'q_log') return m.noSpend ? q.target : Math.min(q.target, logsToday());
+  if (q.id === 'q_story') return (m.noSpend || S.expenses.some((expense) => expense.dateKey === t && expense.intent)) ? 1 : 0;
   return 0;
 }
 function claimQuest(qid) {
@@ -681,6 +696,18 @@ function claimQuest(qid) {
   gainXp(20);
   save(); renderAll();
   toast(`任務完成！+${q.gold} 金幣 · +20 XP`);
+}
+
+function startQuest(qid) {
+  if (qid === 'q_story') {
+    const expense = [...S.expenses].reverse().find((item) => item.dateKey === todayKey() && !item.intent);
+    if (expense) {
+      switchScreen('home');
+      showExpenseReaction(expense.cat, expense.amount, false, expense.id);
+      return;
+    }
+  }
+  openLogSheet('expense');
 }
 
 /* ===================== 魔王 ===================== */
@@ -738,8 +765,8 @@ function buildObjective() {
   const max = bossMaxHp();
   const debt = snowballOrder()[0];
   const affordable = SHOP.find((it) => S.gold >= it.cost && !(it.once && S.items[it.id] > 0));
-  const saveQuest = QUESTS.find((q) => q.id === 'q_save');
-  const saveReady = saveQuest && questProgress(saveQuest) >= saveQuest.target && !meta(t).questsClaimed.includes(saveQuest.id);
+  const storyQuest = QUESTS.find((q) => q.id === 'q_story');
+  const storyReady = storyQuest && questProgress(storyQuest) >= storyQuest.target && !meta(t).questsClaimed.includes(storyQuest.id);
 
   if (dmg >= max && !S.boss.claimed) {
     return {
@@ -765,10 +792,10 @@ function buildObjective() {
       action: () => openLogSheet('expense'),
     };
   }
-  if (saveReady) {
+  if (storyReady) {
     return {
       reward: '+40G',
-      body: '今日開支仲喺動態安心額度內，慳錢任務已完成。去任務頁收低獎勵。',
+      body: '你已經為今日一筆支出補上故事，唔再只得冷冰冰嘅數字。去任務頁收低獎勵。',
       label: '去任務頁',
       action: () => switchScreen('quests'),
     };
@@ -893,6 +920,8 @@ function renderHome() {
   fill.style.width = pct + '%';
   fill.classList.toggle('ok', pct > 40);
   $('hero-hptext').textContent = `${fmt(left)} / ${fmt(pace.safe)}`;
+  $('today-safe-amount').textContent = fmt(left);
+  $('today-spent-copy').textContent = spent > 0 ? `今日已看見 ${fmt(spent)}` : '今日未有支出紀錄';
   const paceShift = pace.safe - pace.base;
   const reserveNote = pace.reservedInstallments > 0 ? `已預留本月分期 ${fmt(pace.reservedInstallments)}。` : '';
   const paceNote = reserveNote + (!pace.calibrated
@@ -919,7 +948,7 @@ function renderHome() {
   const dead = dmg >= max;
   $('boss-hint').textContent = dead
     ? (S.boss.claimed ? '本週已擊倒魔王，下週一佢會復活再戰。' : '魔王倒地喇！快啲領獎。')
-    : `本週每日慳落嘅錢就係對佢嘅傷害（目標儲 ${fmt(max)}，每日最多斬 ${fmt(dayDmgCap())}）。一週要出動至少 5 日先殺到佢，唔記帳嗰日唔計傷害。`;
+    : `本週目標儲 ${fmt(max)}。每個有紀錄嘅日子，剩低嘅安心額度都會變成攻擊力。`;
   $('boss-claim').classList.toggle('hidden', !dead || S.boss.claimed);
   // 零消費按鈕
   const ns = $('btn-nospend');
@@ -943,6 +972,12 @@ function renderHome() {
   $('armor-line').innerHTML = S.finProfile
     ? `護甲：<b>${ai.name}</b>（存款夠用 ${ai.months.toFixed(1)} 個月）${ai.next ? `<span class="armor-next">${ai.next}</span>` : ''}`
     : '';
+  $('wellbeing-control').textContent = meta(todayKey()).noSpend
+    ? '零消費已確認'
+    : (logsToday() ? `${logsToday()} 筆已看見` : '等待第一步');
+  $('wellbeing-resilience').textContent = `${ai.months.toFixed(1)} 個月`;
+  $('wellbeing-goal').textContent = `${Math.round((dmg / max) * 100)}%`;
+  $('wellbeing-freedom').textContent = fmt(left);
   // 債務惡龍
   const debts = snowballOrder();
   $('debt-card').classList.toggle('hidden', debts.length === 0);
@@ -972,7 +1007,9 @@ function renderQuests() {
     const done = p >= q.target;
     return `<div class="quest${done ? ' done' : ''}">
       <div class="q-info">
+        <div class="q-outcome">${q.outcome}</div>
         <div class="q-name">${q.name}</div>
+        <div class="q-desc">${q.desc}</div>
         <div class="q-prog">${claimed ? '已領取' : `${p}/${q.target}`}</div>
         <div class="q-bar"><div style="width:${(p / q.target) * 100}%"></div></div>
       </div>
@@ -980,11 +1017,12 @@ function renderQuests() {
         ? `<span class="icon" data-icon="check"></span>`
         : done
           ? `<button class="btn small primary" data-claim="${q.id}">領 ${q.gold}G</button>`
-          : `<span class="q-reward">${q.gold}G</span>`}
+          : `<div class="q-action"><span class="q-reward">${q.gold}G</span><button class="btn small ghost" data-quest-go="${q.id}">開始</button></div>`}
     </div>`;
   }).join('');
   initIcons($('quest-list'));
   $('quest-list').querySelectorAll('[data-claim]').forEach((b) => (b.onclick = () => claimQuest(b.dataset.claim)));
+  $('quest-list').querySelectorAll('[data-quest-go]').forEach((b) => (b.onclick = () => startQuest(b.dataset.questGo)));
 }
 function renderShop() {
   $('shop-list').innerHTML = SHOP.map((it) => {
@@ -1010,6 +1048,20 @@ function renderShop() {
   initArt($('shop-list'));
   $('shop-list').querySelectorAll('[data-buy]').forEach((b) => (b.onclick = () => buy(b.dataset.buy)));
 }
+
+let activeStatsView = 'overview';
+function switchStatsView(view) {
+  activeStatsView = view;
+  document.querySelectorAll('[data-stats-view]').forEach((button) => {
+    const active = button.dataset.statsView === view;
+    button.classList.toggle('active', active);
+    button.setAttribute('aria-selected', String(active));
+  });
+  document.querySelectorAll('[data-stats-panel]').forEach((panel) => {
+    panel.classList.toggle('active', panel.dataset.statsPanel === view);
+  });
+}
+
 function renderStats() {
   const mk = monthKey();
   const monthExp = S.expenses.filter((e) => e.dateKey.startsWith(mk));
@@ -1059,27 +1111,35 @@ function renderStats() {
   $('recent-logs').innerHTML = recent.length
     ? recent.map((e) => `<div class="log-row">
         <div><span class="lr-cat">${CATS.find((c) => c.id === e.cat).name}</span><span class="lr-date">${e.dateKey.slice(5)}</span>${e.intent ? `<span class="intent-tag">${INTENTS.find((item) => item.id === e.intent).name}</span>` : ''}</div>
-        <div><span class="lr-amt">-${fmt(e.amount)}</span> <button class="btn small ghost" data-del="${e.id}" style="padding:4px 10px;margin-left:6px">刪</button></div>
+        <div class="log-amount"><span class="lr-amt">-${fmt(e.amount)}</span><button class="icon-btn log-delete" data-del="${e.id}" aria-label="刪除呢筆紀錄" title="刪除"><span class="icon" data-icon="trash"></span></button></div>
       </div>`).join('')
     : '<p class="tip">未有紀錄，去記低第一筆啦。</p>';
+  initIcons($('recent-logs'));
   $('recent-logs').querySelectorAll('[data-del]').forEach((b) => (b.onclick = () => {
     const expense = S.expenses.find((entry) => entry.id === Number(b.dataset.del));
     if (!expense) return;
-    if (expense.source === 'installment' && expense.installmentId) {
-      const plan = S.installments.find((item) => item.id === expense.installmentId);
-      const payment = plan && plan.schedule.find((item) => item.index === expense.installmentPaymentIndex);
-      if (payment) {
-        payment.status = 'planned';
-        payment.paidAt = null;
-        plan.paidMonths = plan.schedule.filter((item) => item.status === 'paid').length;
-      }
-    } else if (expense.cardId) {
-      const card = S.creditCards.find((item) => item.id === expense.cardId);
-      if (card) card.currentBalance = Math.max(0, Number(card.currentBalance || 0) - Number(expense.amount || 0));
-    }
-    S.expenses = S.expenses.filter((entry) => entry.id !== expense.id);
-    save(); renderAll();
-    toast('紀錄已刪除，相關結欠同任務進度已同步');
+    const category = CATS.find((item) => item.id === expense.cat);
+    popup('刪除呢個足印？', `<p class="confirm-copy"><b>${category ? category.name : '支出'} ${fmt(expense.amount)}</b><br>刪除後，相關信用卡結欠、分期同任務進度都會一齊同步。</p>`, {
+      confirmLabel: '確認刪除',
+      cancelLabel: '保留紀錄',
+      onConfirm: () => {
+        if (expense.source === 'installment' && expense.installmentId) {
+          const plan = S.installments.find((item) => item.id === expense.installmentId);
+          const payment = plan && plan.schedule.find((item) => item.index === expense.installmentPaymentIndex);
+          if (payment) {
+            payment.status = 'planned';
+            payment.paidAt = null;
+            plan.paidMonths = plan.schedule.filter((item) => item.status === 'paid').length;
+          }
+        } else if (expense.cardId) {
+          const card = S.creditCards.find((item) => item.id === expense.cardId);
+          if (card) card.currentBalance = Math.max(0, Number(card.currentBalance || 0) - Number(expense.amount || 0));
+        }
+        S.expenses = S.expenses.filter((entry) => entry.id !== expense.id);
+        save(); renderAll();
+        toast('紀錄已刪除，相關結欠同任務進度已同步');
+      },
+    });
   }));
 }
 function renderAll() {
@@ -1293,7 +1353,11 @@ function initOnboard() {
     renderAll();
     const dragons = liveDebts().length;
     const pace = safeToSpendToday();
-    popup(firstTime ? '冒險開始！' : '檔案已更新！', `<p style="color:var(--dim);font-size:13px;line-height:1.7">今日可安心使用係 <b style="color:var(--gold)">${fmt(pace.safe)}</b>；累積一個完整記錄日後，會按本月剩餘預算同日數每日調整。<br>護甲：${armorInfo().name}${dragons ? `<br>惡龍：${dragons} 條 — 軍師已經幫你排好雪球攻擊次序` : ''}<br>而家記低今日第一筆支出，有必爆寶箱！</p>`);
+    popup(firstTime ? '冒險開始！' : '檔案已更新！', `<p style="color:var(--dim);font-size:13px;line-height:1.7">今日可安心使用係 <b style="color:var(--gold)">${fmt(pace.safe)}</b>；累積一個完整記錄日後，會按本月剩餘預算同日數每日調整。<br>護甲：${armorInfo().name}${dragons ? `<br>惡龍：${dragons} 條 — 軍師已經幫你排好雪球攻擊次序` : ''}<br>${firstTime ? '第一課唔使背規則：直接記低眼前一筆，我會一路帶住你。' : '新資料已經套用到今日步速。'}</p>`, firstTime ? {
+      confirmLabel: '立即記第一筆',
+      cancelLabel: '先看看營地',
+      onConfirm: () => openLogSheet('expense'),
+    } : { confirmLabel: '完成' });
   };
 
   openFinWizard = (mode) => {
@@ -1354,13 +1418,14 @@ function init() {
   // events
   document.querySelectorAll('.tab').forEach((t) => (t.onclick = () => switchScreen(t.dataset.screen)));
   document.querySelectorAll('[data-screen-jump]').forEach((t) => (t.onclick = () => switchScreen(t.dataset.screenJump)));
+  document.querySelectorAll('[data-stats-view]').forEach((button) => (button.onclick = () => switchStatsView(button.dataset.statsView)));
   $('tab-log').onclick = () => FinanceAdvisor.open();
   $('btn-log-cta').onclick = () => openLogSheet('expense');
+  $('btn-history-add').onclick = () => openLogSheet('expense');
   $('btn-nospend').onclick = markNoSpend;
   $('log-mask').onclick = (e) => { if (e.target === $('log-mask')) closeLogSheet(); };
   $('chest-img').onclick = openChest;
   $('chest-close').onclick = () => $('chest-mask').classList.add('hidden');
-  $('pop-close').onclick = () => $('pop-mask').classList.add('hidden');
   $('boss-claim').onclick = claimBoss;
   $('btn-editfin').onclick = () => openFinWizard('edit');
   $('btn-shortcut').onclick = showShortcutGuide;
