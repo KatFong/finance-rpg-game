@@ -30,6 +30,8 @@ python3 -m http.server 3900 --directory /Users/kat/finance-rpg-game
 
 任務頁係一張七日遠征地圖：每日足印、休整日、今日位置同未來路線會分開顯示，漏一日唔會清空進度。每日三步同本週三個路標分頁處理；一星期有三日完成真實記錄、盤點同消費故事，就可以解鎖遠征寶箱同推進永久章節。遊戲獎勵用嚟建立能力感同自主感，不鼓勵為湊數消費或過度記錄。
 
+成長營地包含「願望任務」同裝備商店。願望任務可以將應急庫、旅行、進修或自由基金設成真實主線，顯示起步金額、期限節奏、25/50/75/100% 里程碑同可撤銷存入紀錄。存入時要分清「今次新儲起」或「現有存款撥入」：前者同步增加護甲存款，後者只做分配，兩者都屬資金轉移，唔會當成消費或扣日常安心額。建立、每日首次補給同每週首次完成嘅遊戲獎勵會持久鎖定，修正或刪除真實紀錄唔會變成刷資源捷徑。
+
 理財戰況對應個人財務健康：日常掌控、應急護甲、目標進度同自主空間；詳細資料集中喺手帳。設計參考 [CFPB Financial Well-Being](https://www.consumerfinance.gov/data-research/research-reports/financial-well-being/)、[Apple Onboarding](https://developer.apple.com/design/human-interface-guidelines/onboarding) 同 [Making finance fun](https://doi.org/10.1108/IJBM-02-2021-0074)；原則係先用真實行動教識玩家、容許休整，並以自主、能力同清晰下一步支持長期動機。
 
 ## 財務問卷 + 資產負債遊戲化
@@ -110,7 +112,7 @@ UI 拆件流程（`tools/gen-ui.sh`）：
 ## 檔案
 
 - `index.html` / `style.css` / `app.js` — 遊戲 UI 同核心狀態
-- `gameplay.js` — 七日遠征、週任務同永久章節嘅純遊戲規則
+- `gameplay.js` — 七日遠征、週任務、永久章節同願望進度嘅純遊戲規則
 - `advisor.js` — 對話軍師、本機 fallback、分期計算同信用卡迷宮
 - `api/advisor.js` — 單一 OpenAI Responses API 後端 endpoint
 - `assets/` — 生成嘅美術（hero, boss, chest-closed, chest-open, coin, shield, flame, bg）

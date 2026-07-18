@@ -9,6 +9,9 @@ const {
   routeModel,
   expeditionComplete,
   expeditionTargetDays,
+  goalSaved,
+  goalProgress,
+  goalPace,
 } = require('../gameplay.js');
 
 test('advances chapters without resetting cumulative days', () => {
@@ -46,4 +49,35 @@ test('reduces a late-week expedition target instead of creating an impossible qu
   assert.equal(expeditionTargetDays(2), 2);
   assert.equal(expeditionTargetDays(1), 1);
   assert.equal(expeditionTargetDays(0), 1);
+});
+
+test('builds goal progress from an opening allocation and matching contributions', () => {
+  const goal = { id: 'goal-1', target: 1000, initialAmount: 200 };
+  const contributions = [
+    { goalId: 'goal-1', amount: 250 },
+    { goalId: 'another-goal', amount: 900 },
+  ];
+  assert.equal(goalSaved(goal, contributions), 450);
+  assert.equal(goalProgress(goal, contributions).remaining, 550);
+  assert.equal(goalProgress(goal, contributions).milestones[0].reached, true);
+});
+
+test('caps a completed goal at one hundred percent without losing the real saved amount', () => {
+  const progress = goalProgress(
+    { id: 'goal-1', target: 500, initialAmount: 450 },
+    [{ goalId: 'goal-1', amount: 100 }]
+  );
+  assert.equal(progress.saved, 550);
+  assert.equal(progress.progressPct, 100);
+  assert.equal(progress.complete, true);
+});
+
+test('suggests a neutral weekly pace when a goal has a deadline', () => {
+  const pace = goalPace(
+    { id: 'goal-1', target: 1000, initialAmount: 0, deadline: '2026-08-16' },
+    [{ goalId: 'goal-1', amount: 200 }],
+    '2026-07-19'
+  );
+  assert.equal(pace.daysLeft, 29);
+  assert.equal(pace.weeklySuggested, 160);
 });

@@ -31,6 +31,12 @@
     { id: 'dawn-kingdom', minDays: 30, name: '晨光王國', subtitle: '將看見變成穩定能力' },
   ];
 
+  const GOAL_TYPES = [
+    { id: 'emergency', name: '應急護甲', art: 'shield', prompt: '為突發事件建立安全空間' },
+    { id: 'dream', name: '願望寶箱', art: 'chest-closed', prompt: '為一件真正重視的事慢慢準備' },
+    { id: 'freedom', name: '自由基金', art: 'coin', prompt: '為未來選擇保留更多自由' },
+  ];
+
   const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
 
   function chapterFor(totalDays) {
@@ -81,8 +87,53 @@
     return clamp(Math.floor(Number(remainingDays) || 0), 1, 3);
   }
 
+  function goalSaved(goal, contributions) {
+    if (!goal) return 0;
+    const initial = Math.max(0, Number(goal.initialAmount) || 0);
+    const added = (contributions || []).reduce((sum, entry) => (
+      entry.goalId === goal.id ? sum + Math.max(0, Number(entry.amount) || 0) : sum
+    ), 0);
+    return Math.round((initial + added + Number.EPSILON) * 100) / 100;
+  }
+
+  function goalProgress(goal, contributions) {
+    const target = Math.max(0, Number(goal && goal.target) || 0);
+    const saved = goalSaved(goal, contributions);
+    const remaining = Math.max(0, target - saved);
+    return {
+      saved,
+      target,
+      remaining,
+      complete: target > 0 && saved >= target,
+      progressPct: target > 0 ? clamp((saved / target) * 100, 0, 100) : 0,
+      milestones: [25, 50, 75, 100].map((percent) => ({ percent, reached: target > 0 && saved >= target * (percent / 100) })),
+    };
+  }
+
+  function dayOrdinal(dateKey) {
+    const match = String(dateKey || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (!match) return null;
+    return Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3])) / 86400000;
+  }
+
+  function goalPace(goal, contributions, todayKey) {
+    const progress = goalProgress(goal, contributions);
+    const today = dayOrdinal(todayKey);
+    const deadline = dayOrdinal(goal && goal.deadline);
+    if (progress.complete || today == null || deadline == null) {
+      return { ...progress, daysLeft: null, weeklySuggested: 0 };
+    }
+    const daysLeft = Math.max(0, deadline - today + 1);
+    const weeksLeft = Math.max(1, Math.ceil(daysLeft / 7));
+    return {
+      ...progress,
+      daysLeft,
+      weeklySuggested: Math.ceil(progress.remaining / weeksLeft),
+    };
+  }
+
   return {
-    WEEKLY_QUESTS, CHAPTERS, chapterFor, weeklyQuestProgress, routeModel,
-    expeditionComplete, expeditionTargetDays,
+    WEEKLY_QUESTS, CHAPTERS, GOAL_TYPES, chapterFor, weeklyQuestProgress, routeModel,
+    expeditionComplete, expeditionTargetDays, goalSaved, goalProgress, goalPace,
   };
 });

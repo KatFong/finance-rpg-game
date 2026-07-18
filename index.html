@@ -9,7 +9,7 @@
 <title>理財勇者</title>
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="assets/hero.png">
-<link rel="stylesheet" href="style.css?v=27">
+<link rel="stylesheet" href="style.css?v=31">
 </head>
 <body data-screen="home">
 
@@ -162,8 +162,21 @@
 
 <!-- ===== 商店 ===== -->
 <main id="screen-shop" class="screen">
-  <div class="page-head"><span>營地補給站</span><h2 class="sec-title">裝備商店</h2><p>用每日努力換返嚟嘅金幣，為下一段旅程升級。</p></div>
-  <div id="shop-list"></div>
+  <div class="page-head growth-page-head"><span>成長營地</span><h2 class="sec-title">願望與裝備</h2><p>將真正重視嘅生活目標變成主線；遊戲裝備只係陪你行得更有趣。</p></div>
+  <div class="growth-tabs" role="tablist" aria-label="成長營地分類">
+    <button class="active" type="button" role="tab" aria-selected="true" data-growth-view="goals">願望任務</button>
+    <button type="button" role="tab" aria-selected="false" data-growth-view="gear">裝備商店</button>
+  </div>
+  <section class="growth-panel active" data-growth-panel="goals">
+    <div id="goal-content"></div>
+    <section class="goal-archive hidden" id="goal-archive">
+      <div class="quest-section-head"><h3>完成章節</h3><span id="goal-archive-count">0</span></div>
+      <div id="goal-archive-list"></div>
+    </section>
+  </section>
+  <section class="growth-panel" data-growth-panel="gear">
+    <div id="shop-list"></div>
+  </section>
 </main>
 
 <!-- ===== 統計 ===== -->
@@ -210,7 +223,7 @@
   <button class="tab active" data-screen="home"><span class="icon" data-icon="swords"></span>今日</button>
   <button class="tab" data-screen="quests"><span class="icon" data-icon="scroll"></span>任務</button>
   <button id="tab-log" aria-label="跟錢錢軍師聊聊"><span class="icon" data-icon="chat"></span><span>軍師</span></button>
-  <button class="tab" data-screen="shop"><span class="icon" data-icon="bag"></span>裝備</button>
+  <button class="tab" data-screen="shop"><span class="icon" data-icon="bag"></span>成長</button>
   <button class="tab" data-screen="stats"><span class="icon" data-icon="chart"></span>手帳</button>
 </nav>
 
@@ -239,6 +252,62 @@
       <button class="btn primary big" id="btn-log-save">確認</button>
     </div>
   </div>
+</div>
+
+<!-- ===== 願望任務表格 ===== -->
+<div class="sheet-mask hidden" id="goal-form-mask">
+  <form class="sheet account-sheet goal-sheet" id="goal-form" role="dialog" aria-labelledby="goal-form-title">
+    <div class="sheet-handle"></div>
+    <div class="form-sheet-head">
+      <div><span>真實主線</span><h3 id="goal-form-title">建立願望任務</h3></div>
+      <div class="form-head-actions">
+        <button class="icon-btn hidden" id="goal-delete" type="button" aria-label="刪除願望任務" title="刪除"><span class="icon" data-icon="trash"></span></button>
+        <button class="icon-btn" id="goal-form-close" type="button" aria-label="關閉願望表格" title="關閉"><span class="icon" data-icon="close"></span></button>
+      </div>
+    </div>
+    <input id="goal-form-id" type="hidden">
+    <div class="goal-type-grid" id="goal-type-grid" role="group" aria-label="願望類型">
+      <button class="active" type="button" data-goal-type="emergency" aria-pressed="true"><img class="art" data-art="shield" alt=""><span>應急護甲</span></button>
+      <button type="button" data-goal-type="dream" aria-pressed="false"><img class="art" data-art="chest-closed" alt=""><span>願望寶箱</span></button>
+      <button type="button" data-goal-type="freedom" aria-pressed="false"><img class="art" data-art="coin" alt=""><span>自由基金</span></button>
+    </div>
+    <div class="account-form-grid goal-form-grid">
+      <label class="full"><span>願望名稱</span><input id="goal-name" maxlength="28" placeholder="例如：三個月應急庫" required></label>
+      <label><span>目標金額</span><input id="goal-target" type="number" inputmode="decimal" min="1" step="0.01" placeholder="30000" required></label>
+      <label><span>起步已預留</span><input id="goal-initial" type="number" inputmode="decimal" min="0" step="0.01" placeholder="0"></label>
+      <label class="full"><span>希望完成日期 <small>選填，唔會用嚟扣分</small></span><input id="goal-deadline" type="date"></label>
+    </div>
+    <p class="form-note">起步金額只係將現有存款分配到願望，不會再次增加護甲存款。</p>
+    <div class="form-sheet-actions">
+      <button class="btn ghost" id="goal-form-cancel" type="button">取消</button>
+      <button class="btn primary" type="submit">儲存願望</button>
+    </div>
+  </form>
+</div>
+
+<!-- ===== 願望儲蓄表格 ===== -->
+<div class="sheet-mask hidden" id="goal-contribution-mask">
+  <form class="sheet account-sheet goal-sheet" id="goal-contribution-form" role="dialog" aria-labelledby="goal-contribution-title">
+    <div class="sheet-handle"></div>
+    <div class="form-sheet-head">
+      <div><span>主線補給</span><h3 id="goal-contribution-title">存入願望進度</h3></div>
+      <button class="icon-btn" id="goal-contribution-close" type="button" aria-label="關閉願望儲蓄表格" title="關閉"><span class="icon" data-icon="close"></span></button>
+    </div>
+    <p class="goal-contribution-status" id="goal-contribution-status"></p>
+    <label class="goal-amount-label"><span>今次存入</span><input id="goal-contribution-amount" type="number" inputmode="decimal" min="0.01" step="0.01" placeholder="500" required></label>
+    <div class="budget-impact goal-funding">
+      <div class="budget-impact-head"><b>呢筆錢來自邊度？</b><span>避免重複計算存款</span></div>
+      <div class="impact-segments" role="group" aria-label="願望儲蓄來源">
+        <button class="active" type="button" data-goal-funding="new_saving" aria-pressed="true">今次新儲起</button>
+        <button type="button" data-goal-funding="allocated" aria-pressed="false">現有存款撥入</button>
+      </div>
+      <p id="goal-funding-hint">會同步增加護甲存款，但不會扣日常安心額。</p>
+    </div>
+    <div class="form-sheet-actions">
+      <button class="btn ghost" id="goal-contribution-cancel" type="button">取消</button>
+      <button class="btn primary" type="submit">確認存入</button>
+    </div>
+  </form>
 </div>
 
 <!-- ===== 信用卡表格 ===== -->
@@ -453,8 +522,8 @@
 <div id="toast" class="hidden"></div>
 
 <script>window.FRPG_CONFIG = { advisorApiUrl: '' };</script>
-<script src="gameplay.js?v=27"></script>
-<script src="advisor.js?v=27"></script>
-<script src="app.js?v=27"></script>
+<script src="gameplay.js?v=31"></script>
+<script src="advisor.js?v=31"></script>
+<script src="app.js?v=31"></script>
 </body>
 </html>

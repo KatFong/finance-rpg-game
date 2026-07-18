@@ -32,6 +32,7 @@ const QUESTS = [
   { id: 'q_story', outcome: '有意識選擇', name: '說清一個今日選擇', desc: '為支出補上故事；零日常消費亦係一次主動選擇。', target: 1, gold: 40 },
 ];
 const WEEKLY_QUESTS = FinanceGameplay.WEEKLY_QUESTS;
+const GOAL_TYPES = FinanceGameplay.GOAL_TYPES;
 
 /* ===================== 狀態 ===================== */
 const defaults = () => ({
@@ -47,6 +48,10 @@ const defaults = () => ({
   installments: [],        // {id, cardId, principal, termMonths, schedule:[]}
   cardPayments: [],        // {id, cardId, amount, dateKey, ts}
   incomes: [],             // {id, ts, dateKey, source, amount}
+  goals: [],               // {id, name, type, target, initialAmount, deadline, rewarded, completedAt}
+  goalContributions: [],   // {id, goalId, amount, source:'new_saving'|'allocated', dateKey, ts}
+  goalRewardWeeks: {},     // weekKey -> rewarded goal id
+  activeGoalId: null,
   gold: 0, xp: 0, level: 1,
   streak: 0, lastLogDate: null, // streak 保留舊欄位名，現代表累積同行日
   items: { sword: 0, charm: 0, shield: 0, cape: 0 },
@@ -67,6 +72,9 @@ function load() {
       state.items = Object.assign(defaults().items, parsed.items || {});
       state.dayMeta = state.dayMeta || {};
       state.weekMeta = state.weekMeta || {};
+      state.goals = Array.isArray(state.goals) ? state.goals : [];
+      state.goalContributions = Array.isArray(state.goalContributions) ? state.goalContributions : [];
+      state.goalRewardWeeks = state.goalRewardWeeks && typeof state.goalRewardWeeks === 'object' ? state.goalRewardWeeks : {};
       return state;
     }
   } catch (e) {}
@@ -153,12 +161,14 @@ function dayHasMoneyActivity(k) {
   return dayActive(k)
     || (S.incomes || []).some((entry) => entry.dateKey === k)
     || (S.cardPayments || []).some((entry) => entry.dateKey === k)
+    || (S.goalContributions || []).some((entry) => entry.dateKey === k)
     || (S.repayments || []).some((entry) => entry.ts && keyOf(new Date(entry.ts)) === k);
 }
 function moneyActivityCount(k) {
   return S.expenses.filter((entry) => entry.dateKey === k).length
     + (S.incomes || []).filter((entry) => entry.dateKey === k).length
     + (S.cardPayments || []).filter((entry) => entry.dateKey === k).length
+    + (S.goalContributions || []).filter((entry) => entry.dateKey === k).length
     + (S.repayments || []).filter((entry) => entry.ts && keyOf(new Date(entry.ts)) === k).length;
 }
 function meta(k) {
@@ -880,6 +890,7 @@ function reviewToday() {
   const income = (S.incomes || []).filter((entry) => entry.dateKey === t).reduce((sum, entry) => sum + Number(entry.amount || 0), 0);
   const cardPaid = (S.cardPayments || []).filter((entry) => entry.dateKey === t).reduce((sum, entry) => sum + Number(entry.amount || 0), 0);
   const debtPaid = (S.repayments || []).filter((entry) => entry.ts && keyOf(new Date(entry.ts)) === t).reduce((sum, entry) => sum + Number(entry.amount || 0), 0);
+  const goalSavedToday = (S.goalContributions || []).filter((entry) => entry.dateKey === t).reduce((sum, entry) => sum + Number(entry.amount || 0), 0);
   const noSpend = m.noSpend && daily === 0;
   popup('今日金流盤點', `<div class="review-summary">
     <p>收隊前望一眼就夠，唔需要為咗完成任務而製造更多紀錄。</p>
@@ -887,6 +898,7 @@ function reviewToday() {
     <div><span>固定／預留</span><b>${fmt(committed)}</b></div>
     <div><span>今日收入</span><b class="positive">${fmt(income)}</b></div>
     <div><span>還卡／還債</span><b>${fmt(cardPaid + debtPaid)}</b></div>
+    <div><span>願望儲蓄</span><b class="positive">${fmt(goalSavedToday)}</b></div>
   </div>`, {
     confirmLabel: '完成盤點',
     cancelLabel: '再檢查一下',
@@ -975,6 +987,7 @@ function buildObjective() {
   const dmg = bossDamage();
   const max = bossMaxHp();
   const debt = snowballOrder()[0];
+  const goal = activeGoal();
   const affordable = SHOP.find((it) => S.gold >= it.cost && !(it.once && S.items[it.id] > 0));
   const todayMeta = meta(t);
   const untaggedExpense = [...S.expenses].reverse().find((item) => item.dateKey === t && expenseBudgetImpact(item) === 'daily' && !item.intent);
@@ -1031,12 +1044,20 @@ function buildObjective() {
       action: () => openLogSheet('repay'),
     };
   }
+  if (!goal) {
+    return {
+      reward: '+25 XP',
+      body: '遊戲入面嘅金幣只係陪伴。建立一個真正重要嘅願望，先可以將每次看見金流連返去你想要嘅生活。',
+      label: '建立願望任務',
+      action: () => { switchGrowthView('goals'); switchScreen('shop'); },
+    };
+  }
   if (affordable) {
     return {
       reward: `${affordable.cost}G`,
       body: `金幣夠買 <b>${affordable.name}</b>。升裝可以強化記帳獎勵或者打魔王效率。`,
       label: '去商店',
-      action: () => switchScreen('shop'),
+      action: () => { switchGrowthView('gear'); switchScreen('shop'); },
     };
   }
   return {
@@ -1103,6 +1124,217 @@ function buildWeeklyReflection() {
 }
 
 /* ===================== 商店 ===================== */
+let activeGrowthView = 'goals';
+let selectedGoalType = 'emergency';
+let selectedGoalFunding = 'new_saving';
+
+function switchGrowthView(view) {
+  if (!['goals', 'gear'].includes(view)) return;
+  activeGrowthView = view;
+  document.querySelectorAll('[data-growth-view]').forEach((button) => {
+    const active = button.dataset.growthView === view;
+    button.classList.toggle('active', active);
+    button.setAttribute('aria-selected', String(active));
+  });
+  document.querySelectorAll('[data-growth-panel]').forEach((panel) => {
+    panel.classList.toggle('active', panel.dataset.growthPanel === view);
+  });
+}
+
+function activeGoal() {
+  let goal = S.goals.find((item) => item.id === S.activeGoalId) || null;
+  if (!goal) {
+    goal = [...S.goals].reverse().find((item) => !FinanceGameplay.goalProgress(item, S.goalContributions).complete) || null;
+    if (goal) S.activeGoalId = goal.id;
+  }
+  return goal;
+}
+
+function goalTypeInfo(type) {
+  return GOAL_TYPES.find((item) => item.id === type) || GOAL_TYPES[1];
+}
+
+function setGoalType(type) {
+  if (!GOAL_TYPES.some((item) => item.id === type)) return;
+  selectedGoalType = type;
+  document.querySelectorAll('[data-goal-type]').forEach((button) => {
+    const active = button.dataset.goalType === type;
+    button.classList.toggle('active', active);
+    button.setAttribute('aria-pressed', String(active));
+  });
+}
+
+function closeGoalForm() { $('goal-form-mask').classList.add('hidden'); }
+function openGoalForm(goalId) {
+  const goal = S.goals.find((item) => item.id === goalId) || null;
+  $('goal-form-id').value = goal ? goal.id : '';
+  $('goal-form-title').textContent = goal ? '編輯願望任務' : '建立願望任務';
+  $('goal-name').value = goal ? goal.name : '';
+  $('goal-target').value = goal ? goal.target : '';
+  $('goal-initial').value = goal ? Number(goal.initialAmount || 0) : '';
+  $('goal-deadline').value = goal && goal.deadline ? goal.deadline : '';
+  $('goal-delete').classList.toggle('hidden', !goal);
+  setGoalType(goal ? goal.type : 'emergency');
+  $('goal-form-mask').classList.remove('hidden');
+}
+
+function saveGoalForm(event) {
+  event.preventDefault();
+  const existing = S.goals.find((item) => item.id === $('goal-form-id').value) || null;
+  const name = $('goal-name').value.trim().slice(0, 28);
+  const target = Number($('goal-target').value);
+  const initialAmount = Math.max(0, Number($('goal-initial').value || 0));
+  const deadline = $('goal-deadline').value || null;
+  if (!name || !(target > 0)) { toast('請填願望名稱同目標金額'); return; }
+  const data = { name, type: selectedGoalType, target, initialAmount, deadline };
+  let goal;
+  let creationRewarded = false;
+  if (existing) {
+    Object.assign(existing, data);
+    goal = existing;
+  } else {
+    goal = {
+      id: `goal-${Date.now()}-${Math.floor(Math.random() * 10000)}`,
+      ...data,
+      createdAt: Date.now(), completedAt: null, rewarded: false,
+    };
+    S.goals.push(goal);
+    S.activeGoalId = goal.id;
+    const todayMeta = meta(todayKey());
+    if (!todayMeta.goalCreateRewarded) {
+      todayMeta.goalCreateRewarded = true;
+      creationRewarded = true;
+      gainXp(25);
+    }
+  }
+  const progress = FinanceGameplay.goalProgress(goal, S.goalContributions);
+  if (progress.complete) {
+    goal.completedAt = goal.completedAt || Date.now();
+    goal.rewarded = true;
+  } else {
+    goal.completedAt = null;
+  }
+  save(); closeGoalForm(); renderAll();
+  toast(existing ? '願望任務已更新' : `新主線已加入${creationRewarded ? ' · +25 XP' : ''}`);
+}
+
+function deleteGoal() {
+  const goal = S.goals.find((item) => item.id === $('goal-form-id').value);
+  if (!goal) return;
+  closeGoalForm();
+  popup('刪除願望任務？', `<p class="confirm-copy"><b>${escapeHtml(goal.name)}</b><br>願望同分配紀錄會移除；已經新儲起嘅真實存款仍然留喺護甲，唔會被扣走。</p>`, {
+    confirmLabel: '確認刪除',
+    cancelLabel: '保留願望',
+    onConfirm: () => {
+      S.goals = S.goals.filter((item) => item.id !== goal.id);
+      S.goalContributions = S.goalContributions.filter((item) => item.goalId !== goal.id);
+      if (S.activeGoalId === goal.id) S.activeGoalId = null;
+      save(); renderAll(); toast('願望任務已刪除');
+    },
+  });
+}
+
+function setGoalFunding(source) {
+  if (!['new_saving', 'allocated'].includes(source)) return;
+  selectedGoalFunding = source;
+  document.querySelectorAll('[data-goal-funding]').forEach((button) => {
+    const active = button.dataset.goalFunding === source;
+    button.classList.toggle('active', active);
+    button.setAttribute('aria-pressed', String(active));
+  });
+  $('goal-funding-hint').textContent = source === 'new_saving'
+    ? '會同步增加護甲存款，但不會扣日常安心額。'
+    : '只將現有存款分配到願望，總存款不會再次增加。';
+}
+
+function closeGoalContribution() { $('goal-contribution-mask').classList.add('hidden'); }
+function openGoalContribution() {
+  const goal = activeGoal();
+  if (!goal) return;
+  const progress = FinanceGameplay.goalProgress(goal, S.goalContributions);
+  if (progress.complete) { toast('呢個願望已經完成'); return; }
+  $('goal-contribution-title').textContent = `存入「${goal.name}」`;
+  $('goal-contribution-status').textContent = `已準備 ${fmt(progress.saved)}，尚餘 ${fmt(progress.remaining)}。`;
+  $('goal-contribution-amount').value = '';
+  setGoalFunding('new_saving');
+  $('goal-contribution-mask').classList.remove('hidden');
+}
+
+function saveGoalContribution(event) {
+  event.preventDefault();
+  const goal = activeGoal();
+  const amount = Number($('goal-contribution-amount').value);
+  if (!goal || !(amount > 0)) { toast('請輸入今次存入金額'); return; }
+  const before = FinanceGameplay.goalProgress(goal, S.goalContributions);
+  const dateKey = todayKey();
+  const todayMeta = meta(dateKey);
+  const firstToday = !todayMeta.goalContributionRewarded;
+  S.goalContributions.push({
+    id: `goal-save-${Date.now()}-${Math.floor(Math.random() * 10000)}`,
+    goalId: goal.id, amount, source: selectedGoalFunding, dateKey, ts: Date.now(),
+  });
+  if (selectedGoalFunding === 'new_saving' && S.finProfile) {
+    S.finProfile.savings = Math.max(0, Number(S.finProfile.savings || 0) + amount);
+  }
+  touchStreak();
+  invalidateReview(dateKey);
+  const levelBeforeContribution = S.level;
+  if (firstToday) {
+    todayMeta.goalContributionRewarded = true;
+    gainXp(20);
+  }
+  const after = FinanceGameplay.goalProgress(goal, S.goalContributions);
+  const newlyCompleted = !before.complete && after.complete;
+  let completionRewarded = false;
+  let completionBlockedByWeek = false;
+  if (newlyCompleted) {
+    goal.completedAt = Date.now();
+    if (!goal.rewarded) {
+      goal.rewarded = true;
+      const wk = weekKey();
+      if (!S.goalRewardWeeks[wk]) {
+        S.goalRewardWeeks[wk] = goal.id;
+        completionRewarded = true;
+        gainGold(250);
+        gainXp(300);
+      } else {
+        completionBlockedByWeek = true;
+      }
+    }
+  }
+  let contributionLevelBonus = 0;
+  for (let level = levelBeforeContribution + 1; level <= S.level; level++) contributionLevelBonus += 25 * level;
+  save(); closeGoalContribution(); renderAll();
+  softVibrate(newlyCompleted ? [12, 30, 12] : [8, 22, 8]);
+  if (newlyCompleted) {
+    const rewardCopy = completionRewarded
+      ? `+250 金幣 · +300 XP${contributionLevelBonus ? `<br>升級獎勵另加 ${contributionLevelBonus} 金幣` : ''}`
+      : `${completionBlockedByWeek ? '本週願望寶箱已領取；新一週會再開放。' : '願望重新達到目標；本章獎勵之前已經領取。'}${contributionLevelBonus ? `<br>今次補給升級，另加 ${contributionLevelBonus} 金幣。` : ''}`;
+    popup('真實主線完成！', `<img class="art goal-complete-art" data-art="chest-open" alt="願望寶箱"><p class="expedition-popup-copy"><b>${escapeHtml(goal.name)}</b> 已經準備完成。呢個獎勵來自你真實建立嘅選擇空間。<br><b>${rewardCopy}</b></p>`);
+  } else {
+    toast(`願望進度 +${fmt(amount)}${firstToday ? ' · +20 XP' : ''}`);
+  }
+}
+
+function removeGoalContribution(contributionId) {
+  const entry = S.goalContributions.find((item) => item.id === contributionId);
+  const goal = entry && S.goals.find((item) => item.id === entry.goalId);
+  if (!entry || !goal) return;
+  popup('刪除呢次願望存入？', `<p class="confirm-copy"><b>${escapeHtml(goal.name)} · ${fmt(entry.amount)}</b><br>${entry.source === 'new_saving' ? '護甲存款會同步扣回呢筆誤記金額。' : '只會移除願望分配，總存款不受影響。'}</p>`, {
+    confirmLabel: '確認刪除',
+    cancelLabel: '保留紀錄',
+    onConfirm: () => {
+      S.goalContributions = S.goalContributions.filter((item) => item.id !== entry.id);
+      if (entry.source === 'new_saving' && S.finProfile) {
+        S.finProfile.savings = Math.max(0, Number(S.finProfile.savings || 0) - Number(entry.amount || 0));
+      }
+      if (!FinanceGameplay.goalProgress(goal, S.goalContributions).complete) goal.completedAt = null;
+      invalidateReview(entry.dateKey);
+      save(); renderAll(); toast('願望存入紀錄已刪除');
+    },
+  });
+}
+
 function buy(id) {
   const it = SHOP.find((x) => x.id === id);
   if (it.once && S.items[id] > 0) return;
@@ -1363,7 +1595,91 @@ function renderQuests() {
   $('expedition-claim').textContent = rewardClaimed ? '已領取' : '領取';
   switchQuestView(activeQuestView);
 }
+function renderGoal() {
+  const goal = activeGoal();
+  const content = $('goal-content');
+  if (!goal) {
+    content.innerHTML = `<section class="goal-empty">
+      <img class="art" data-art="strategist" alt="錢錢軍師">
+      <div><span>真實主線未開始</span><h3>你想為邊一種生活留低選擇？</h3><p>應急庫、旅行、進修或者一筆自由基金都可以。願望唔會扣分，亦唔需要完美期限。</p></div>
+      <button class="btn primary" data-goal-create><span class="icon" data-icon="plus"></span>建立願望任務</button>
+    </section>`;
+  } else {
+    const type = goalTypeInfo(goal.type);
+    const progress = FinanceGameplay.goalProgress(goal, S.goalContributions);
+    const pace = FinanceGameplay.goalPace(goal, S.goalContributions, todayKey());
+    const deadlineCopy = goal.deadline
+      ? new Intl.DateTimeFormat('zh-HK', { year: 'numeric', month: 'short', day: 'numeric' }).format(new Date(`${goal.deadline}T12:00:00`))
+      : '自主節奏';
+    const paceCopy = progress.complete
+      ? '目標已完成。你可以保留呢一章，或者開始下一個真正重要嘅願望。'
+      : pace.daysLeft == null
+        ? '冇設定死線；每次有空間先行一步，進度唔會因休息倒退。'
+        : pace.daysLeft === 0
+          ? '原定日期已到，但願望唔會失敗。可以調整日期，或者繼續按目前節奏前進。'
+          : `距離希望日期仲有 ${pace.daysLeft} 日；平均每週約 ${fmt(pace.weeklySuggested)} 就可以到達。`;
+    const contributions = S.goalContributions
+      .filter((entry) => entry.goalId === goal.id)
+      .sort((a, b) => b.ts - a.ts)
+      .slice(0, 5);
+    content.innerHTML = `<section class="goal-journey${progress.complete ? ' complete' : ''}">
+      <div class="goal-head">
+        <div><span>${type.name}</span><h3>${escapeHtml(goal.name)}</h3></div>
+        <button class="icon-btn" data-goal-edit aria-label="編輯願望任務" title="編輯"><span class="icon" data-icon="edit"></span></button>
+      </div>
+      <div class="goal-stage">
+        <img class="art" data-art="${type.art}" alt="${type.name}">
+        <div class="goal-stage-copy"><span>${progress.complete ? '主線完成' : type.prompt}</span><strong>${Math.round(progress.progressPct)}%</strong><small>${deadlineCopy}</small></div>
+      </div>
+      <div class="goal-track" aria-label="願望進度 ${Math.round(progress.progressPct)}%"><span style="width:${progress.progressPct}%"></span></div>
+      <div class="goal-milestones" aria-hidden="true">${progress.milestones.map((milestone) => `<span class="${milestone.reached ? 'reached' : ''}"><i></i><small>${milestone.percent}%</small></span>`).join('')}</div>
+      <div class="goal-metrics">
+        <div><span>已準備</span><b>${fmt(progress.saved)}</b></div>
+        <div><span>目標</span><b>${fmt(progress.target)}</b></div>
+        <div><span>尚餘</span><b>${fmt(progress.remaining)}</b></div>
+      </div>
+      <p class="goal-pace">${paceCopy}</p>
+      <button class="btn primary big goal-main-action" ${progress.complete ? 'data-goal-new' : 'data-goal-add'}>${progress.complete ? '<span class="icon" data-icon="plus"></span>開始下一個願望' : '存入願望進度'}</button>
+    </section>
+    <section class="goal-log-section">
+      <div class="quest-section-head"><h3>最近補給</h3><span>${contributions.length ? `共 ${S.goalContributions.filter((entry) => entry.goalId === goal.id).length} 次` : '未有紀錄'}</span></div>
+      <div class="goal-log-list">${contributions.length ? contributions.map((entry) => `
+        <div class="goal-log-row">
+          <div><b>${fmt(entry.amount)}</b><span>${entry.dateKey.slice(5)} · ${entry.source === 'new_saving' ? '新儲起' : '現有存款撥入'}</span></div>
+          <button class="icon-btn" data-goal-contribution-delete="${entry.id}" aria-label="刪除願望存入紀錄" title="刪除"><span class="icon" data-icon="trash"></span></button>
+        </div>`).join('') : '<p class="tip">第一次存入會留下足印，亦會計入今日金流盤點。</p>'}</div>
+    </section>`;
+  }
+  initArt(content); initIcons(content);
+  content.querySelectorAll('[data-goal-create], [data-goal-new]').forEach((button) => (button.onclick = () => openGoalForm()));
+  content.querySelectorAll('[data-goal-edit]').forEach((button) => (button.onclick = () => openGoalForm(goal.id)));
+  content.querySelectorAll('[data-goal-add]').forEach((button) => (button.onclick = openGoalContribution));
+  content.querySelectorAll('[data-goal-contribution-delete]').forEach((button) => {
+    button.onclick = () => removeGoalContribution(button.dataset.goalContributionDelete);
+  });
+
+  const completedGoals = S.goals.filter((item) => (
+    item.id !== (goal && goal.id) && FinanceGameplay.goalProgress(item, S.goalContributions).complete
+  )).sort((a, b) => Number(b.completedAt || 0) - Number(a.completedAt || 0));
+  $('goal-archive').classList.toggle('hidden', completedGoals.length === 0);
+  $('goal-archive-count').textContent = `${completedGoals.length} 章`;
+  $('goal-archive-list').innerHTML = completedGoals.map((item) => {
+    const type = goalTypeInfo(item.type);
+    const progress = FinanceGameplay.goalProgress(item, S.goalContributions);
+    return `<button class="goal-archive-row" data-goal-select="${item.id}">
+      <img class="art" data-art="${type.art}" alt="">
+      <span><b>${escapeHtml(item.name)}</b><small>${type.name} · ${fmt(progress.saved)}</small></span>
+      <span class="icon" data-icon="check"></span>
+    </button>`;
+  }).join('');
+  initArt($('goal-archive-list')); initIcons($('goal-archive-list'));
+  $('goal-archive-list').querySelectorAll('[data-goal-select]').forEach((button) => {
+    button.onclick = () => { S.activeGoalId = button.dataset.goalSelect; save(); renderAll(); };
+  });
+}
+
 function renderShop() {
+  renderGoal();
   $('shop-list').innerHTML = SHOP.map((it) => {
     const owned = S.items[it.id] > 0;
     const soldOut = it.once && owned;
@@ -1386,6 +1702,7 @@ function renderShop() {
   initIcons($('shop-list'));
   initArt($('shop-list'));
   $('shop-list').querySelectorAll('[data-buy]').forEach((b) => (b.onclick = () => buy(b.dataset.buy)));
+  switchGrowthView(activeGrowthView);
 }
 
 let activeStatsView = 'overview';
@@ -1409,6 +1726,10 @@ function renderStats() {
   const committedSpent = monthExp.filter((entry) => expenseBudgetImpact(entry) === 'committed').reduce((sum, entry) => sum + entry.amount, 0);
   const monthIncome = (S.incomes || []).filter((entry) => entry.dateKey.startsWith(mk));
   const totalIncome = monthIncome.reduce((sum, entry) => sum + Number(entry.amount || 0), 0);
+  const monthGoalContributions = (S.goalContributions || []).filter((entry) => entry.dateKey.startsWith(mk));
+  const totalGoalSaved = monthGoalContributions.reduce((sum, entry) => sum + Number(entry.amount || 0), 0);
+  const currentGoal = activeGoal();
+  const currentGoalProgress = currentGoal ? FinanceGameplay.goalProgress(currentGoal, S.goalContributions) : null;
   let savedTotal = 0;
   const dayKeys = new Set(S.expenses.map((e) => e.dateKey));
   Object.keys(S.dayMeta).forEach((k) => { if (S.dayMeta[k].noSpend) dayKeys.add(k); });
@@ -1423,7 +1744,9 @@ function renderStats() {
     <div class="stat-box"><div class="v">${fmt(committedSpent)}</div><div class="k">固定／預留支出</div></div>
     <div class="stat-box"><div class="v">${fmt(totalSpent)}</div><div class="k">全部實際支出</div></div>
     <div class="stat-box"><div class="v">${fmt(savedTotal)}</div><div class="k">記帳日安心餘額</div></div>
-    <div class="stat-box"><div class="v" style="color:${totalIncome - totalSpent >= 0 ? 'var(--leaf-deep)' : 'var(--coral)'}">${fmt(totalIncome - totalSpent)}</div><div class="k">已記收支差</div></div>`;
+    <div class="stat-box"><div class="v" style="color:${totalIncome - totalSpent >= 0 ? 'var(--leaf-deep)' : 'var(--coral)'}">${fmt(totalIncome - totalSpent)}</div><div class="k">已記收支差</div></div>
+    <div class="stat-box"><div class="v">${fmt(totalGoalSaved)}</div><div class="k">本月願望儲蓄</div></div>
+    <div class="stat-box"><div class="v">${currentGoalProgress ? `${Math.round(currentGoalProgress.progressPct)}%` : '未建立'}</div><div class="k">目前真實主線</div></div>`;
   // 資產負債
   const fp = S.finProfile || { savings: 0 };
   const net = fp.savings - totalDebt();
@@ -1458,6 +1781,7 @@ function renderStats() {
     ...S.expenses.map((entry) => ({ ...entry, entryType: 'expense' })),
     ...(S.incomes || []).map((entry) => ({ ...entry, entryType: 'income' })),
     ...(S.cardPayments || []).map((entry) => ({ ...entry, entryType: 'card_payment' })),
+    ...(S.goalContributions || []).map((entry) => ({ ...entry, entryType: 'goal_contribution' })),
     ...(S.repayments || []).map((entry) => ({ ...entry, dateKey: keyOf(new Date(entry.ts)), entryType: 'debt_payment' })),
   ].sort((a, b) => b.ts - a.ts).slice(0, 10);
   $('recent-logs').innerHTML = recent.length
@@ -1465,6 +1789,11 @@ function renderStats() {
       ? `<div class="log-row">
         <div><span class="lr-cat">${escapeHtml(entry.source || '收入')}</span><span class="lr-date">${entry.dateKey.slice(5)}</span><span class="intent-tag income-tag">收入</span></div>
         <div class="log-amount"><span class="lr-amt income">+${fmt(entry.amount)}</span><button class="icon-btn log-delete" data-del-income="${escapeHtml(entry.id)}" aria-label="刪除呢筆收入" title="刪除"><span class="icon" data-icon="trash"></span></button></div>
+      </div>`
+      : entry.entryType === 'goal_contribution'
+      ? `<div class="log-row">
+        <div><span class="lr-cat">${escapeHtml((S.goals.find((goal) => goal.id === entry.goalId) || { name: '願望任務' }).name)}</span><span class="lr-date">${entry.dateKey.slice(5)}</span><span class="intent-tag goal-tag">願望儲蓄</span></div>
+        <div class="log-amount"><span class="lr-amt transfer">${fmt(entry.amount)}</span><button class="icon-btn log-delete" data-del-goal-contribution="${entry.id}" aria-label="刪除願望存入紀錄" title="刪除"><span class="icon" data-icon="trash"></span></button></div>
       </div>`
       : entry.entryType === 'card_payment'
       ? `<div class="log-row">
@@ -1482,6 +1811,9 @@ function renderStats() {
       </div>`).join('')
     : '<p class="tip">未有紀錄，去記低第一筆啦。</p>';
   initIcons($('recent-logs'));
+  $('recent-logs').querySelectorAll('[data-del-goal-contribution]').forEach((button) => {
+    button.onclick = () => removeGoalContribution(button.dataset.delGoalContribution);
+  });
   $('recent-logs').querySelectorAll('[data-impact-expense]').forEach((button) => (button.onclick = () => {
     const expense = S.expenses.find((entry) => entry.id === Number(button.dataset.impactExpense));
     if (!expense) return;
@@ -2039,6 +2371,9 @@ function init() {
   document.querySelectorAll('[data-screen-jump]').forEach((t) => (t.onclick = () => switchScreen(t.dataset.screenJump)));
   document.querySelectorAll('[data-stats-view]').forEach((button) => (button.onclick = () => switchStatsView(button.dataset.statsView)));
   document.querySelectorAll('[data-quest-view]').forEach((button) => (button.onclick = () => switchQuestView(button.dataset.questView)));
+  document.querySelectorAll('[data-growth-view]').forEach((button) => (button.onclick = () => switchGrowthView(button.dataset.growthView)));
+  document.querySelectorAll('[data-goal-type]').forEach((button) => (button.onclick = () => setGoalType(button.dataset.goalType)));
+  document.querySelectorAll('[data-goal-funding]').forEach((button) => (button.onclick = () => setGoalFunding(button.dataset.goalFunding)));
   $('tab-log').onclick = () => FinanceAdvisor.open();
   bindLogButton();
   $('home-reminder-button').onclick = openHomeReminder;
@@ -2052,6 +2387,15 @@ function init() {
   $('btn-home-status').onclick = showStatusDialogue;
   $('btn-history-add').onclick = () => openLogSheet('expense');
   $('btn-card-add').onclick = () => openCardForm();
+  $('goal-form').onsubmit = saveGoalForm;
+  $('goal-form-close').onclick = closeGoalForm;
+  $('goal-form-cancel').onclick = closeGoalForm;
+  $('goal-delete').onclick = deleteGoal;
+  $('goal-form-mask').onclick = (event) => { if (event.target === $('goal-form-mask')) closeGoalForm(); };
+  $('goal-contribution-form').onsubmit = saveGoalContribution;
+  $('goal-contribution-close').onclick = closeGoalContribution;
+  $('goal-contribution-cancel').onclick = closeGoalContribution;
+  $('goal-contribution-mask').onclick = (event) => { if (event.target === $('goal-contribution-mask')) closeGoalContribution(); };
   $('card-form').onsubmit = saveCardForm;
   $('card-form-close').onclick = closeCardForm;
   $('card-form-cancel').onclick = closeCardForm;
