@@ -669,7 +669,11 @@
       for (let index = event.resultIndex; index < event.results.length; index++) transcript += event.results[index][0].transcript;
       $('advisor-input').value = transcript;
     };
-    recognition.onerror = () => bridge.toast('今次聽唔清楚，可以再講一次');
+    recognition.onerror = (event) => {
+      bridge.toast(event.error === 'not-allowed'
+        ? '需要允許咪高峰權限先可以語音記帳'
+        : '今次聽唔清楚，可以再講一次');
+    };
     recognition.onend = () => {
       listening = false;
       mic.classList.remove('listening');
@@ -684,6 +688,15 @@
     renderMessages();
     if (prompt) submitMessage(prompt);
     else $('advisor-input').focus();
+  }
+
+  function openVoice() {
+    open();
+    if (!recognition) {
+      bridge.toast('呢個瀏覽器未支援語音輸入，已為你開啟文字記帳');
+      return;
+    }
+    startVoice();
   }
 
   function close() {
@@ -849,7 +862,7 @@
   }
 
   return {
-    init, open, close, render, monthReserved, monthCommitments, buildInstallmentSchedule,
+    init, open, openVoice, close, render, monthReserved, monthCommitments, buildInstallmentSchedule,
     localAdvisorTurn, normalizeDateKey, addMonths,
   };
 });

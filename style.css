@@ -378,6 +378,7 @@ body[data-period="night"] .scene-sky {
 .armor-line b { color: #a46c16; }
 .armor-next { display: block; margin-top: 2px; color: var(--leaf-deep); }
 .home-actions { display: grid; grid-template-columns: 1.35fr 1fr; gap: 8px; }
+#btn-log-cta.hold-arming { transform: translateY(2px) scale(.985); border-color: #2f7650; box-shadow: 0 0 0 4px rgba(89, 184, 117, .2); }
 .wellbeing-panel { padding: 13px 2px 11px; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
 .wellbeing-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin-bottom: 9px; }
 .wellbeing-head span { color: var(--ink); font-size: 14px; font-weight: 900; }

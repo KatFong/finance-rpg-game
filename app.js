@@ -1732,6 +1732,73 @@ function showShortcutGuide() {
     </div>`);
 }
 
+function bindLogButton() {
+  const button = $('btn-log-cta');
+  let pointerStartedAt = 0;
+  let startX = 0;
+  let startY = 0;
+  let moved = false;
+  let holdFeedbackTimer = null;
+  let suppressNextClick = false;
+
+  const clearHold = () => {
+    clearTimeout(holdFeedbackTimer);
+    holdFeedbackTimer = null;
+    button.classList.remove('hold-arming');
+  };
+
+  button.title = '點按快速記帳；長按開啟語音記帳';
+  button.setAttribute('aria-label', '記眼前一筆；長按開啟語音記帳');
+  button.addEventListener('pointerdown', (event) => {
+    if (event.button !== 0) return;
+    pointerStartedAt = Date.now();
+    startX = event.clientX;
+    startY = event.clientY;
+    moved = false;
+    try { button.setPointerCapture(event.pointerId); } catch (error) {}
+    clearHold();
+    holdFeedbackTimer = setTimeout(() => {
+      if (!moved) {
+        button.classList.add('hold-arming');
+        softVibrate(6);
+      }
+    }, 420);
+  });
+  button.addEventListener('pointermove', (event) => {
+    if (!pointerStartedAt) return;
+    if (Math.hypot(event.clientX - startX, event.clientY - startY) > 12) {
+      moved = true;
+      clearHold();
+    }
+  });
+  button.addEventListener('pointerup', (event) => {
+    const heldFor = pointerStartedAt ? Date.now() - pointerStartedAt : 0;
+    pointerStartedAt = 0;
+    try { button.releasePointerCapture(event.pointerId); } catch (error) {}
+    clearHold();
+    if (!moved && heldFor >= 500) {
+      suppressNextClick = true;
+      FinanceAdvisor.openVoice();
+      softVibrate([8, 24, 8]);
+    }
+  });
+  button.addEventListener('pointercancel', () => {
+    pointerStartedAt = 0;
+    moved = false;
+    clearHold();
+  });
+  button.addEventListener('contextmenu', (event) => event.preventDefault());
+  button.onclick = (event) => {
+    if (suppressNextClick || moved) {
+      suppressNextClick = false;
+      moved = false;
+      event.preventDefault();
+      return;
+    }
+    openLogSheet('expense');
+  };
+}
+
 /* ===================== 啟動 ===================== */
 function init() {
   initArt(); initIcons();
@@ -1749,7 +1816,7 @@ function init() {
   document.querySelectorAll('[data-screen-jump]').forEach((t) => (t.onclick = () => switchScreen(t.dataset.screenJump)));
   document.querySelectorAll('[data-stats-view]').forEach((button) => (button.onclick = () => switchStatsView(button.dataset.statsView)));
   $('tab-log').onclick = () => FinanceAdvisor.open();
-  $('btn-log-cta').onclick = () => openLogSheet('expense');
+  bindLogButton();
   $('btn-history-add').onclick = () => openLogSheet('expense');
   $('btn-card-add').onclick = () => openCardForm();
   $('card-form').onsubmit = saveCardForm;
