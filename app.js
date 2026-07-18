@@ -1098,32 +1098,103 @@ let openFinWizard = null;
 let replayIntro = null;
 function initOnboard() {
   let step = 0, heroType = 'male', incomeType = 'fixed', rate = 0.2, debtsDraft = [];
+  let wizardMode = 'intro', dialogueTarget = 2, dialogueIndex = 0;
+  let dialogueLines = [], typewriterTimer = null, dialogueTyping = false, dialogueFullText = '';
   const steps = document.querySelectorAll('.ob-step');
-  const guideLines = [
-    '',
-    '',
-    '終於等到你。先揀一位同行者，再話我知今次旅程想用咩名出發。',
-    '每位勇者補充資源嘅方式都唔同，我會按收入節奏安排任務。',
-    '存款就似護甲。唔需要同任何人比較，我只想知道今日由邊度開始。',
-    '債務唔係污點，只係地圖上要逐條處理嘅惡龍。我會幫你排好攻擊次序。',
-    '資料齊喇。定好每日能量同每週目標，就可以正式紮營。',
-  ];
+
+  function getDialogueLines(target) {
+    const name = $('ob-name').value.trim() || S.heroName || '勇者';
+    const hasDebts = debtsDraft.length > 0;
+    const scripts = {
+      2: [
+        '歡迎嚟到理財王國！',
+        '我係錢錢軍師，專門幫勇者搵返每一枚失去方向嘅金幣。',
+        '喺呢個世界，金幣唔會無故消失。每一次付款，都會喺你嘅金流地圖留低一條路。',
+        '我唔會批評你點使錢。我哋只會一齊睇清楚，下一步可以點行。',
+        '出發之前，先話我知……我應該點稱呼你？',
+      ],
+      3: [
+        `好，${name}。由今日開始，我會係你嘅同行軍師。`,
+        '每位勇者補充資源嘅方式都唔同。你每月大約有幾多金幣入袋？',
+      ],
+      4: [
+        '收入節奏記低咗。呢個數字唔係分數，只係我哋規劃路線嘅起點。',
+        '下一樣係護甲。你目前有幾多流動存款，可以應付突然出現嘅事件？',
+      ],
+      5: [
+        '明白。護甲厚薄都唔緊要，知道現況先可以一步一步強化。',
+        '旅途上有冇債務惡龍？有就逐條話我知，冇都可以放心講冇。',
+      ],
+      6: [
+        hasDebts ? `我見到 ${debtsDraft.length} 條惡龍。放心，我會幫你排好攻擊次序。` : '地圖上暫時冇債務惡龍，行裝會輕鬆一啲。',
+        '最後，一齊訂立今個月嘅冒險契約：日常可以用幾多，同每週想儲起幾多？',
+      ],
+    };
+    return scripts[target] || [];
+  }
+
+  function stopTypewriter(showFull = false) {
+    if (typewriterTimer) clearInterval(typewriterTimer);
+    typewriterTimer = null;
+    if (showFull) $('ob-dialogue-text').textContent = dialogueFullText;
+    dialogueTyping = false;
+  }
+
+  function renderDialogueLine() {
+    stopTypewriter();
+    dialogueFullText = dialogueLines[dialogueIndex] || '';
+    $('ob-dialogue-text').textContent = '';
+    $('ob-dialogue-count').textContent = `${dialogueIndex + 1} / ${dialogueLines.length}`;
+    $('ob-dialogue-next').textContent = dialogueIndex === dialogueLines.length - 1 ? '回答軍師' : '下一句';
+    const characters = Array.from(dialogueFullText);
+    let cursor = 0;
+    dialogueTyping = true;
+    typewriterTimer = setInterval(() => {
+      cursor += 1;
+      $('ob-dialogue-text').textContent = characters.slice(0, cursor).join('');
+      if (cursor >= characters.length) stopTypewriter();
+    }, 24);
+  }
 
   function showStep(i) {
+    if (i !== 1) stopTypewriter();
     step = i;
     const onboard = document.querySelector('.onboard');
     onboard.classList.toggle('intro-mode', i < 2);
     onboard.classList.toggle('title-mode', i === 0);
+    onboard.classList.toggle('dialogue-mode', i === 1);
+    onboard.classList.toggle('answer-mode', i >= 2);
     steps.forEach((s) => s.classList.toggle('hidden', Number(s.dataset.step) !== i));
     const questProgress = Math.max(1, i - 1);
     $('ob-bar').style.width = ((questProgress / (steps.length - 2)) * 100) + '%';
-    if (guideLines[i]) $('ob-guide-text').textContent = guideLines[i];
     if (i === 6) {
       const inc = Number($('ob-income').value) || 0;
       $('ob-budget-tip').textContent = inc > 0 ? `你收入 ${fmt(inc)}。參考：日常使費預算最好唔超過收入七成，剩返嘅留俾儲蓄同還債。` : '';
       if (!$('ob-budget').value && inc > 0) $('ob-budget').value = Math.round(inc * 0.6);
     }
   }
+
+  function startDialogue(target) {
+    dialogueTarget = target;
+    dialogueIndex = 0;
+    dialogueLines = getDialogueLines(target);
+    showStep(1);
+    renderDialogueLine();
+  }
+
+  $('ob-title-start').onclick = () => startDialogue(2);
+  $('ob-dialogue-next').onclick = () => {
+    if (dialogueTyping) {
+      stopTypewriter(true);
+      return;
+    }
+    if (dialogueIndex < dialogueLines.length - 1) {
+      dialogueIndex += 1;
+      renderDialogueLine();
+      return;
+    }
+    showStep(dialogueTarget);
+  };
   $('ob-hero-type').querySelectorAll('.hero-choice').forEach((choice) => {
     choice.onclick = () => {
       heroType = choice.dataset.heroType;
@@ -1145,7 +1216,9 @@ function initOnboard() {
   }
   document.querySelectorAll('.ob-next').forEach((b) => (b.onclick = () => {
     if (step === 3 && !(Number($('ob-income').value) > 0)) { toast('填返每月大約收入先'); return; }
-    showStep(step + 1);
+    const nextStep = step + 1;
+    if (wizardMode === 'edit') showStep(nextStep);
+    else startDialogue(nextStep);
   }));
   $('ob-inctype').querySelectorAll('.chip').forEach((c) => {
     c.onclick = () => {
@@ -1198,6 +1271,7 @@ function initOnboard() {
   };
 
   openFinWizard = (mode) => {
+    wizardMode = mode === 'edit' ? 'edit' : 'intro';
     $('ob-name').value = S.heroName === '勇者' ? '' : S.heroName;
     heroType = S.heroType === 'female' ? 'female' : 'male';
     $('ob-hero-type').querySelectorAll('.hero-choice').forEach((choice) => {
@@ -1216,7 +1290,7 @@ function initOnboard() {
     $('ob-rate').querySelectorAll('.chip').forEach((c) => c.classList.toggle('active', Number(c.dataset.rate) === rate));
     debtsDraft = S.debts.map((d) => ({ ...d }));
     renderDebtsDraft();
-    showStep(mode === 'intro' || !S.onboarded ? 0 : 2);
+    showStep(wizardMode === 'intro' || !S.onboarded ? 0 : 2);
     $('onboard-mask').classList.remove('hidden');
   };
   replayIntro = () => openFinWizard('intro');
