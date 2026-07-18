@@ -208,6 +208,10 @@
 <div class="modal-mask welcome-mask hidden" id="onboard-mask">
   <div class="modal onboard">
     <div class="ob-progress"><div id="ob-bar"></div></div>
+    <div class="ob-loading-screen" aria-live="polite">
+      <span class="ob-loading-mark" aria-hidden="true"></span>
+      <p>正在打開金流地圖……</p>
+    </div>
 
     <div class="ob-step ob-title-step" data-step="0">
       <div class="title-logo">
@@ -225,18 +229,23 @@
     </div>
 
     <div class="ob-step ob-dialogue-step hidden" data-step="1">
-      <div class="opening-scene-label">
-        <span>序章</span>
-        <b>被霧遮住的金流地圖</b>
+      <div class="opening-chapter-header">
+        <span class="opening-chapter-mark" aria-hidden="true"></span>
+        <b>旅程開始</b>
       </div>
-      <div class="opening-character">
-        <img src="assets/strategist.png" alt="錢錢軍師">
+      <div class="opening-visual">
+        <div class="opening-scene-label">
+          <span>序章</span>
+          <b>被霧遮住的金流地圖</b>
+        </div>
+        <div class="opening-character">
+          <img id="ob-dialogue-character" src="assets/strategist.png" alt="錢錢軍師" data-scene="strategist">
+        </div>
       </div>
       <div class="opening-dialogue-box">
         <div class="opening-speaker">
           <span class="opening-speaker-mark" aria-hidden="true"></span>
           <b id="ob-dialogue-speaker">錢錢軍師</b>
-          <span id="ob-dialogue-count">1 / 5</span>
         </div>
         <p id="ob-dialogue-text" aria-live="polite"></p>
         <button class="btn primary big" id="ob-dialogue-next">下一句</button>

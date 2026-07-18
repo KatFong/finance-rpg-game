@@ -1099,7 +1099,8 @@ let replayIntro = null;
 function initOnboard() {
   let step = 0, heroType = 'male', incomeType = 'fixed', rate = 0.2, debtsDraft = [];
   let wizardMode = 'intro', dialogueTarget = 2, dialogueIndex = 0;
-  let dialogueLines = [], typewriterTimer = null, dialogueTyping = false, dialogueFullText = '';
+  let dialogueLines = [], typewriterTimer = null, introLoadTimer = null;
+  let dialogueTyping = false, dialogueFullText = '';
   const steps = document.querySelectorAll('.ob-step');
 
   function getDialogueLines(target) {
@@ -1107,27 +1108,28 @@ function initOnboard() {
     const hasDebts = debtsDraft.length > 0;
     const scripts = {
       2: [
-        '歡迎嚟到理財王國！',
-        '我係錢錢軍師，專門幫勇者搵返每一枚失去方向嘅金幣。',
-        '喺呢個世界，金幣唔會無故消失。每一次付款，都會喺你嘅金流地圖留低一條路。',
-        '我唔會批評你點使錢。我哋只會一齊睇清楚，下一步可以點行。',
-        '出發之前，先話我知……我應該點稱呼你？',
+        { text: '歡迎嚟到理財王國！', scene: 'strategist' },
+        { text: '我係錢錢軍師，專門研究金幣喺日常生活入面嘅足跡。', scene: 'strategist' },
+        { text: '喺呢個世界，金幣唔會無故消失。每一次付款，都會喺地圖留低一條路。', scene: 'strategist' },
+        { text: '不過，慾望魔王最擅長用忙碌同遺忘，將呢啲路慢慢遮住。', scene: 'boss' },
+        { text: '我唔會批評你點使錢。我哋只會一齊睇清楚，下一步可以點行。', scene: 'strategist' },
+        { text: '出發之前，先話我知……我應該點稱呼你？', scene: 'strategist' },
       ],
       3: [
-        `好，${name}。由今日開始，我會係你嘅同行軍師。`,
-        '每位勇者補充資源嘅方式都唔同。你每月大約有幾多金幣入袋？',
+        { text: `好，${name}。由今日開始，我會係你嘅同行軍師。`, scene: 'hero' },
+        { text: '每位勇者補充資源嘅方式都唔同。你每月大約有幾多金幣入袋？', scene: 'hero' },
       ],
       4: [
-        '收入節奏記低咗。呢個數字唔係分數，只係我哋規劃路線嘅起點。',
-        '下一樣係護甲。你目前有幾多流動存款，可以應付突然出現嘅事件？',
+        { text: '收入節奏記低咗。呢個數字唔係分數，只係我哋規劃路線嘅起點。', scene: 'strategist' },
+        { text: '下一樣係護甲。你目前有幾多流動存款，可以應付突然出現嘅事件？', scene: 'shield' },
       ],
       5: [
-        '明白。護甲厚薄都唔緊要，知道現況先可以一步一步強化。',
-        '旅途上有冇債務惡龍？有就逐條話我知，冇都可以放心講冇。',
+        { text: '明白。護甲厚薄都唔緊要，知道現況先可以一步一步強化。', scene: 'shield' },
+        { text: '旅途上有冇債務惡龍？有就逐條話我知，冇都可以放心講冇。', scene: 'boss' },
       ],
       6: [
-        hasDebts ? `我見到 ${debtsDraft.length} 條惡龍。放心，我會幫你排好攻擊次序。` : '地圖上暫時冇債務惡龍，行裝會輕鬆一啲。',
-        '最後，一齊訂立今個月嘅冒險契約：日常可以用幾多，同每週想儲起幾多？',
+        { text: hasDebts ? `我見到 ${debtsDraft.length} 條惡龍。放心，我會幫你排好攻擊次序。` : '地圖上暫時冇債務惡龍，行裝會輕鬆一啲。', scene: hasDebts ? 'boss' : 'hero' },
+        { text: '最後，一齊訂立今個月嘅冒險契約：日常可以用幾多，同每週想儲起幾多？', scene: 'strategist' },
       ],
     };
     return scripts[target] || [];
@@ -1138,14 +1140,32 @@ function initOnboard() {
     typewriterTimer = null;
     if (showFull) $('ob-dialogue-text').textContent = dialogueFullText;
     dialogueTyping = false;
+    $('ob-dialogue-next').disabled = false;
   }
 
   function renderDialogueLine() {
     stopTypewriter();
-    dialogueFullText = dialogueLines[dialogueIndex] || '';
+    const line = dialogueLines[dialogueIndex] || { text: '', scene: 'strategist' };
+    const sceneAssets = {
+      strategist: ['assets/strategist.png', '錢錢軍師'],
+      hero: [heroType === 'female' ? 'assets/hero-female.png' : 'assets/hero.png', '同行勇者'],
+      shield: ['assets/shield.png', '存款護盾'],
+      boss: ['assets/boss.png', '慾望魔王'],
+    };
+    const character = $('ob-dialogue-character');
+    const [sceneSrc, sceneAlt] = sceneAssets[line.scene] || sceneAssets.strategist;
+    if (character.dataset.scene !== line.scene) {
+      character.src = sceneSrc;
+      character.alt = sceneAlt;
+      character.dataset.scene = line.scene;
+      character.classList.remove('scene-changing');
+      void character.offsetWidth;
+      character.classList.add('scene-changing');
+    }
+    dialogueFullText = line.text;
     $('ob-dialogue-text').textContent = '';
-    $('ob-dialogue-count').textContent = `${dialogueIndex + 1} / ${dialogueLines.length}`;
-    $('ob-dialogue-next').textContent = dialogueIndex === dialogueLines.length - 1 ? '回答軍師' : '下一句';
+    $('ob-dialogue-next').textContent = '下一步';
+    $('ob-dialogue-next').disabled = true;
     const characters = Array.from(dialogueFullText);
     let cursor = 0;
     dialogueTyping = true;
@@ -1182,12 +1202,18 @@ function initOnboard() {
     renderDialogueLine();
   }
 
-  $('ob-title-start').onclick = () => startDialogue(2);
+  $('ob-title-start').onclick = () => {
+    const onboard = document.querySelector('.onboard');
+    $('ob-title-start').disabled = true;
+    onboard.classList.add('loading-mode');
+    introLoadTimer = setTimeout(() => {
+      onboard.classList.remove('loading-mode');
+      $('ob-title-start').disabled = false;
+      startDialogue(2);
+    }, 650);
+  };
   $('ob-dialogue-next').onclick = () => {
-    if (dialogueTyping) {
-      stopTypewriter(true);
-      return;
-    }
+    if (dialogueTyping) return;
     if (dialogueIndex < dialogueLines.length - 1) {
       dialogueIndex += 1;
       renderDialogueLine();
@@ -1271,6 +1297,10 @@ function initOnboard() {
   };
 
   openFinWizard = (mode) => {
+    if (introLoadTimer) clearTimeout(introLoadTimer);
+    introLoadTimer = null;
+    document.querySelector('.onboard').classList.remove('loading-mode');
+    $('ob-title-start').disabled = false;
     wizardMode = mode === 'edit' ? 'edit' : 'intro';
     $('ob-name').value = S.heroName === '勇者' ? '' : S.heroName;
     heroType = S.heroType === 'female' ? 'female' : 'male';

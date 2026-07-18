@@ -1,4 +1,4 @@
-const CACHE_NAME = 'finance-rpg-v12';
+const CACHE_NAME = 'finance-rpg-v13';
 const APP_SHELL = [
   './',
   './index.html',
