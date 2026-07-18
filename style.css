@@ -1568,7 +1568,10 @@ body[data-period="night"] .scene-sky {
 #ob-dialogue-text { min-height: 84px; margin: 12px 0 14px; color: var(--ink); font-size: 15px; font-weight: 800; line-height: 1.65; }
 .opening-dialogue-box .btn { width: 100%; margin-top: auto; }
 .opening-dialogue-box .btn:disabled { border-color: #cbded8; background: #dfeae7; color: #9fb1ac; box-shadow: none; cursor: default; }
-.ob-form-step { max-width: 600px; padding: 18px 20px max(calc(env(safe-area-inset-bottom) + 16px), 20px); border: 0; border-radius: 0; background: #fff; box-shadow: 0 -10px 30px rgba(18,50,53,.18); animation: answer-sheet-in .32s cubic-bezier(.2,.75,.25,1) both; }
+.ob-form-step { position: relative; max-width: 600px; padding: 18px 20px max(calc(env(safe-area-inset-bottom) + 16px), 20px); border: 0; border-radius: 0; background: #fff; box-shadow: 0 -10px 30px rgba(18,50,53,.18); animation: answer-sheet-in .32s cubic-bezier(.2,.75,.25,1) both; }
+.ob-form-step .ob-back { position: absolute; top: 10px; left: 12px; z-index: 2; color: var(--ink); }
+.ob-form-step > .ob-kicker, .ob-form-step > .ob-quest-label { min-height: 34px; display: grid; place-items: center; padding-inline: 42px; }
+.ob-step h1:focus, .ob-step h3:focus { outline: 0; }
 @keyframes opening-character-in { from { opacity: 0; transform: translateY(12px); } }
 @keyframes opening-scene-swap { from { opacity: 0; transform: scale(.94); } }
 @keyframes answer-sheet-in { from { opacity: 0; transform: translateY(28px); } }

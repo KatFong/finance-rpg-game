@@ -3495,6 +3495,7 @@ function initOnboard() {
   let step = 0, heroType = 'male', incomeType = 'fixed', rate = 0.2, debtsDraft = [];
   let wizardMode = 'intro', dialogueTarget = 2, dialogueIndex = 0;
   let dialogueLines = [], typewriterTimer = null, introLoadTimer = null;
+  let dialogueSeenTargets = new Set();
   let dialogueTyping = false, dialogueFullText = '';
   const steps = document.querySelectorAll('.ob-step');
 
@@ -3580,8 +3581,24 @@ function initOnboard() {
     onboard.classList.toggle('dialogue-mode', i === 1);
     onboard.classList.toggle('answer-mode', i >= 2);
     steps.forEach((s) => s.classList.toggle('hidden', Number(s.dataset.step) !== i));
-    const questProgress = Math.max(1, i - 1);
+    const questProgress = Math.min(steps.length - 2, Math.max(1, i - 1));
     $('ob-bar').style.width = ((questProgress / (steps.length - 2)) * 100) + '%';
+    $('ob-progress').setAttribute('aria-valuenow', String(questProgress));
+    $('ob-progress').setAttribute('aria-valuetext', `第 ${questProgress} 題，共 ${steps.length - 2} 題`);
+    const activeStep = [...steps].find((item) => Number(item.dataset.step) === i);
+    const back = activeStep && activeStep.querySelector('.ob-back');
+    if (back) {
+      const closesEditor = wizardMode === 'edit' && i === 2;
+      back.setAttribute('aria-label', closesEditor ? '關閉財務設定' : '返回上一題');
+      back.title = closesEditor ? '關閉' : '返回';
+    }
+    onboard.scrollTop = 0;
+    requestAnimationFrame(() => {
+      const heading = activeStep && activeStep.querySelector('h1, h3');
+      if (!heading) return;
+      heading.tabIndex = -1;
+      heading.focus({ preventScroll: true });
+    });
     if (i === 6) {
       const inc = Number($('ob-income').value) || 0;
       $('ob-budget-tip').textContent = inc > 0 ? `你收入 ${fmt(inc)}。請填扣除屋租、供款、保費等固定承諾後，真正可以安排日常生活嘅預算。` : '';
@@ -3593,6 +3610,7 @@ function initOnboard() {
     dialogueTarget = target;
     dialogueIndex = 0;
     dialogueLines = getDialogueLines(target);
+    dialogueSeenTargets.add(target);
     showStep(1);
     renderDialogueLine();
   }
@@ -3630,28 +3648,50 @@ function initOnboard() {
   function renderDebtsDraft() {
     $('ob-debts').innerHTML = debtsDraft.length
       ? debtsDraft.map((d, i) =>
-          `<div class="ob-debt-row"><span>${escapeHtml(d.name)}</span><b>${fmt(d.balance)}</b><button data-i="${i}" type="button">刪</button></div>`).join('')
+          `<div class="ob-debt-row"><span>${escapeHtml(d.name)}</span><b>${fmt(d.balance)}</b><button data-i="${i}" type="button" aria-label="刪除 ${escapeHtml(d.name)}" title="刪除"><span class="icon" data-icon="trash"></span></button></div>`).join('')
       : '<p class="tip" style="margin:0">未加入任何債務。</p>';
+    initIcons($('ob-debts'));
     $('ob-debts').querySelectorAll('button').forEach((b) =>
       (b.onclick = () => { debtsDraft.splice(Number(b.dataset.i), 1); renderDebtsDraft(); }));
   }
   document.querySelectorAll('.ob-next').forEach((b) => (b.onclick = () => {
     if (step === 3 && !(Number($('ob-income').value) > 0)) { toast('填返每月大約收入先'); return; }
     const nextStep = step + 1;
-    if (wizardMode === 'edit') showStep(nextStep);
+    if (wizardMode === 'edit' || dialogueSeenTargets.has(nextStep)) showStep(nextStep);
     else startDialogue(nextStep);
+  }));
+  document.querySelectorAll('.ob-back').forEach((button) => (button.onclick = () => {
+    if (step > 2) {
+      showStep(step - 1);
+      return;
+    }
+    if (wizardMode === 'edit') {
+      $('onboard-mask').classList.add('hidden');
+      return;
+    }
+    dialogueTarget = 2;
+    dialogueLines = getDialogueLines(2);
+    dialogueIndex = Math.max(0, dialogueLines.length - 1);
+    showStep(1);
+    renderDialogueLine();
   }));
   $('ob-inctype').querySelectorAll('.chip').forEach((c) => {
     c.onclick = () => {
-      $('ob-inctype').querySelectorAll('.chip').forEach((x) => x.classList.remove('active'));
-      c.classList.add('active');
+      $('ob-inctype').querySelectorAll('.chip').forEach((x) => {
+        const selected = x === c;
+        x.classList.toggle('active', selected);
+        x.setAttribute('aria-pressed', String(selected));
+      });
       incomeType = c.dataset.v;
     };
   });
   $('ob-rate').querySelectorAll('.chip').forEach((c) => {
     c.onclick = () => {
-      $('ob-rate').querySelectorAll('.chip').forEach((x) => x.classList.remove('active'));
-      c.classList.add('active');
+      $('ob-rate').querySelectorAll('.chip').forEach((x) => {
+        const selected = x === c;
+        x.classList.toggle('active', selected);
+        x.setAttribute('aria-pressed', String(selected));
+      });
       rate = Number(c.dataset.rate);
     };
   });
@@ -3701,6 +3741,7 @@ function initOnboard() {
     document.querySelector('.onboard').classList.remove('loading-mode');
     $('ob-title-start').disabled = false;
     wizardMode = mode === 'edit' ? 'edit' : 'intro';
+    dialogueSeenTargets = new Set();
     $('ob-name').value = S.heroName === '勇者' ? '' : S.heroName;
     heroType = S.heroType === 'female' ? 'female' : 'male';
     $('ob-hero-type').querySelectorAll('.hero-choice').forEach((choice) => {
@@ -3713,10 +3754,18 @@ function initOnboard() {
       $('ob-income').value = S.finProfile.income || '';
       $('ob-savings').value = S.finProfile.savings || '';
     }
-    $('ob-inctype').querySelectorAll('.chip').forEach((c) => c.classList.toggle('active', c.dataset.v === incomeType));
+    $('ob-inctype').querySelectorAll('.chip').forEach((c) => {
+      const selected = c.dataset.v === incomeType;
+      c.classList.toggle('active', selected);
+      c.setAttribute('aria-pressed', String(selected));
+    });
     $('ob-budget').value = S.onboarded ? S.monthlyBudget : '';
     rate = S.saveRate || 0.2;
-    $('ob-rate').querySelectorAll('.chip').forEach((c) => c.classList.toggle('active', Number(c.dataset.rate) === rate));
+    $('ob-rate').querySelectorAll('.chip').forEach((c) => {
+      const selected = Number(c.dataset.rate) === rate;
+      c.classList.toggle('active', selected);
+      c.setAttribute('aria-pressed', String(selected));
+    });
     debtsDraft = S.debts.map((d) => ({ ...d }));
     renderDebtsDraft();
     showStep(wizardMode === 'intro' || !S.onboarded ? 0 : 2);

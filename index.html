@@ -9,7 +9,7 @@
 <title>理財勇者</title>
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="assets/hero.png">
-<link rel="stylesheet" href="style.css?v=56">
+<link rel="stylesheet" href="style.css?v=57">
 </head>
 <body data-screen="home">
 
@@ -657,7 +657,7 @@
 <!-- ===== 新手設定（財務問卷） ===== -->
 <div class="modal-mask welcome-mask hidden" id="onboard-mask">
   <div class="modal onboard" role="dialog" aria-modal="true" aria-label="理財勇者序章">
-    <div class="ob-progress"><div id="ob-bar"></div></div>
+    <div class="ob-progress" id="ob-progress" role="progressbar" aria-label="開檔進度" aria-valuemin="1" aria-valuemax="5" aria-valuenow="1" aria-valuetext="第 1 題，共 5 題"><div id="ob-bar"></div></div>
     <div class="ob-loading-screen" aria-live="polite">
       <span class="ob-loading-mark" aria-hidden="true"></span>
       <p>正在打開金流地圖……</p>
@@ -703,6 +703,7 @@
     </div>
 
     <div class="ob-step ob-form-step hidden" data-step="2">
+      <button class="icon-btn ob-back" type="button" aria-label="返回上一題" title="返回"><span class="icon" data-icon="back"></span></button>
       <span class="ob-kicker">第一幕 · 揀選同行者</span>
       <h3>邊位勇者代表你？</h3>
       <div class="hero-choice-grid" id="ob-hero-type">
@@ -719,11 +720,12 @@
     </div>
 
     <div class="ob-step ob-form-step hidden" data-step="3">
+      <button class="icon-btn ob-back" type="button" aria-label="返回上一題" title="返回"><span class="icon" data-icon="back"></span></button>
       <span class="ob-quest-label">主線任務 01 · 補給節奏</span>
       <h3>你平時點樣補充冒險資源？</h3>
-      <div class="chips col" id="ob-inctype">
-        <button class="chip active" data-v="fixed">固定月薪</button>
-        <button class="chip" data-v="variable">浮動收入（freelance／佣金／散工）</button>
+      <div class="chips col" id="ob-inctype" role="group" aria-label="收入類型">
+        <button class="chip active" type="button" data-v="fixed" aria-pressed="true">固定月薪</button>
+        <button class="chip" type="button" data-v="variable" aria-pressed="false">浮動收入（freelance／佣金／散工）</button>
       </div>
       <label>每月大約收入（HK$）<input id="ob-income" type="number" inputmode="numeric" placeholder="例如 20000"></label>
       <p class="tip">浮動收入請填「淡月」嗰個數，旺月盈餘當額外戰利品。</p>
@@ -731,6 +733,7 @@
     </div>
 
     <div class="ob-step ob-form-step hidden" data-step="4">
+      <button class="icon-btn ob-back" type="button" aria-label="返回上一題" title="返回"><span class="icon" data-icon="back"></span></button>
       <span class="ob-quest-label">主線任務 01 · 初始護甲</span>
       <h3>你而家嘅護甲有幾厚？</h3>
       <p class="tip">流動存款＝勇者嘅護甲，幫你捱過突發事件。冇就填 0，慢慢打返出嚟。</p>
@@ -739,28 +742,30 @@
     </div>
 
     <div class="ob-step ob-form-step hidden" data-step="5">
+      <button class="icon-btn ob-back" type="button" aria-label="返回上一題" title="返回"><span class="icon" data-icon="back"></span></button>
       <span class="ob-quest-label">主線任務 01 · 惡龍圖鑑</span>
       <h3>路上有冇債務惡龍？</h3>
       <p class="tip">每筆債＝一條惡龍。遊戲會用「雪球還債法」幫你由最細條開始逐條消滅。冇債可以直接下一步。</p>
       <div id="ob-debts"></div>
       <div class="debt-add">
-        <input id="ob-debt-name" placeholder="債務名（例：信用卡）" maxlength="8">
-        <input id="ob-debt-bal" type="number" inputmode="numeric" placeholder="餘額">
+        <input id="ob-debt-name" aria-label="債務名稱" placeholder="債務名（例：信用卡）" maxlength="20">
+        <input id="ob-debt-bal" type="number" inputmode="decimal" min="0.01" step="0.01" aria-label="債務餘額（HK$）" placeholder="餘額">
         <button class="btn small" id="ob-debt-addbtn" type="button">加入</button>
       </div>
       <button class="btn primary big ob-next">下一步</button>
     </div>
 
     <div class="ob-step ob-form-step hidden" data-step="6">
+      <button class="icon-btn ob-back" type="button" aria-label="返回上一題" title="返回"><span class="icon" data-icon="back"></span></button>
       <span class="ob-quest-label">主線任務 01 · 訂立契約</span>
       <h3>最後，一齊定今次旅程節奏</h3>
       <p class="tip" id="ob-budget-tip"></p>
       <label>每月日常可用預算（HK$）<input id="ob-budget" type="number" inputmode="numeric" placeholder="例如 8000"></label>
       <label>每週儲蓄目標（用嚟打魔王）</label>
-      <div class="chips" id="ob-rate">
-        <button class="chip" data-rate="0.1">預算嘅 10%</button>
-        <button class="chip active" data-rate="0.2">預算嘅 20%</button>
-        <button class="chip" data-rate="0.3">預算嘅 30%</button>
+      <div class="chips" id="ob-rate" role="group" aria-label="每週儲蓄目標比例">
+        <button class="chip" type="button" data-rate="0.1" aria-pressed="false">預算嘅 10%</button>
+        <button class="chip active" type="button" data-rate="0.2" aria-pressed="true">預算嘅 20%</button>
+        <button class="chip" type="button" data-rate="0.3" aria-pressed="false">預算嘅 30%</button>
       </div>
       <button class="btn primary big" id="ob-start">開始冒險</button>
     </div>
@@ -770,11 +775,11 @@
 <div id="toast" class="hidden"></div>
 
 <script>window.FRPG_CONFIG = { advisorApiUrl: '' };</script>
-<script src="vault.js?v=56"></script>
-<script src="gameplay.js?v=56"></script>
-<script src="cashflow.js?v=56"></script>
-<script src="ledger.js?v=56"></script>
-<script src="advisor.js?v=56"></script>
-<script src="app.js?v=56"></script>
+<script src="vault.js?v=57"></script>
+<script src="gameplay.js?v=57"></script>
+<script src="cashflow.js?v=57"></script>
+<script src="ledger.js?v=57"></script>
+<script src="advisor.js?v=57"></script>
+<script src="app.js?v=57"></script>
 </body>
 </html>
