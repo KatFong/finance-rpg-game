@@ -516,15 +516,16 @@
     const state = bridge.getState();
     let confirmation;
     if (draft.kind === 'income') {
-      state.incomes = state.incomes || [];
       const incomeDate = draft.date || bridge.today();
-      state.incomes.push({
-        id: makeId('income'), amount: roundMoney(draft.amount),
-        dateKey: incomeDate, source: draft.merchant || '收入', ts: Date.now(),
+      const recorded = bridge.recordIncome(Number(draft.amount), {
+        dateKey: incomeDate,
+        source: draft.merchant || '收入',
+        skipToast: true,
       });
-      if (incomeDate === bridge.today()) bridge.invalidateReview();
-      bridge.dailyReward('income-entry', 10, 15, incomeDate === bridge.today());
-      bridge.commit();
+      if (!recorded) {
+        addMessage('assistant', '收入金額或者日期未能確認，請再講一次。');
+        return;
+      }
       confirmation = `${fmt(draft.amount)} 收入已經寫入冒險手帳。`;
     } else if (draft.kind === 'expense') {
       const recorded = bridge.recordExpense(draft.category || 'other', Number(draft.amount), {

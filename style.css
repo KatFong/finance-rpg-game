@@ -627,6 +627,20 @@ body[data-period="night"] .scene-sky {
 .entry-edit-grid { padding-bottom: 10px; }
 .entry-edit-impact { margin-inline: 2px; }
 
+.log-sheet-top { display: grid; grid-template-columns: minmax(0, 1fr) 44px; align-items: center; gap: 9px; margin-bottom: 9px; }
+.log-mode-switch { min-width: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); padding: 3px; border: 1px solid #b8d0cb; border-radius: var(--radius); background: #e8f1ee; }
+.log-mode-switch button { min-width: 0; min-height: 44px; border: 0; border-radius: 6px; background: transparent; color: var(--dim); font-size: 11px; font-weight: 900; }
+.log-mode-switch button.active { background: #fff; color: var(--leaf-deep); box-shadow: 0 2px 7px rgba(45, 84, 86, .12); }
+.log-mode-label { padding-left: 4px; color: var(--berry); font-size: 11px; font-weight: 900; }
+.log-sheet-top .icon-btn { justify-self: end; }
+.log-step-head { position: relative; min-height: 38px; display: grid; place-items: center; }
+.log-step-head .sheet-title { margin: 4px 48px 9px; }
+.log-step-head .icon-btn { position: absolute; left: 0; top: 0; }
+.log-details-toggle { width: 100%; min-height: 44px; display: flex; align-items: center; justify-content: center; gap: 7px; margin: 0 0 9px; border: 1px solid #b9d0cb; border-bottom-width: 3px; border-radius: var(--radius); background: #f8fbfa; color: var(--ink-soft); font-size: 10px; font-weight: 900; }
+.log-details-toggle .icon { width: 17px; height: 17px; }
+.log-details-toggle[aria-expanded="true"] { border-color: var(--sky-deep); background: #eef8fa; color: var(--sky-deep); }
+.log-details { margin: -2px 0 10px; padding: 0 9px; border-left: 3px solid var(--sky-deep); background: #f4faf9; }
+.log-details-grid { padding-block: 10px; }
 .quick-log { margin: -3px 0 13px; padding-bottom: 12px; border-bottom: 1px solid var(--line); }
 .quick-log-head { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 7px; }
 .quick-log-head b { color: var(--ink); font-size: 11px; }
@@ -673,9 +687,9 @@ body[data-period="night"] .scene-sky {
 .cat-btn.sel { border-color: var(--leaf-deep); background: #e8f5eb; }
 .cat-sub { display: block; color: var(--coral); font-size: 9px; }
 .debt-btn .focus-tag { margin: 0; }
-.amount-display { margin: 5px 0 10px; color: var(--leaf-deep); text-align: center; font-size: 42px; font-weight: 900; }
-.amount-display .cur { margin-right: 4px; color: var(--dim); font-size: 22px; }
-.budget-impact { margin: 0 0 10px; padding: 10px; border: 1px solid #c8d9d5; border-radius: var(--radius); background: #f7faf9; }
+.amount-display { margin: 2px 0 7px; color: var(--leaf-deep); text-align: center; font-size: 36px; font-weight: 900; }
+.amount-display .cur { margin-right: 4px; color: var(--dim); font-size: 20px; }
+.budget-impact { margin: 0 0 8px; padding: 8px 10px; border: 1px solid #c8d9d5; border-radius: var(--radius); background: #f7faf9; }
 .budget-impact-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin-bottom: 7px; }
 .budget-impact-head b { color: var(--ink); font-size: 10px; }
 .budget-impact-head span { color: var(--dim); font-size: 8px; }
@@ -683,8 +697,8 @@ body[data-period="night"] .scene-sky {
 .impact-segments button { min-height: 44px; padding: 7px; border: 1px solid #bdd3ce; border-bottom-width: 3px; border-radius: var(--radius); background: #fff; color: var(--dim); font-size: 10px; font-weight: 900; cursor: pointer; }
 .impact-segments button.active { border-color: var(--leaf-deep); background: #e5f3e8; color: #2d7248; }
 .budget-impact p { margin-top: 6px; color: var(--dim); font-size: 8px; line-height: 1.4; }
-.numpad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 7px; margin-bottom: 10px; }
-.numpad button { min-height: 50px; border: 1px solid #c4d8d4; border-bottom-width: 3px; border-radius: var(--radius); background: #fff; color: var(--ink); font-size: 20px; font-weight: 800; cursor: pointer; }
+.numpad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px; margin-bottom: 8px; }
+.numpad button { min-height: 44px; border: 1px solid #c4d8d4; border-bottom-width: 3px; border-radius: var(--radius); background: #fff; color: var(--ink); font-size: 19px; font-weight: 800; cursor: pointer; }
 .numpad button:active { transform: translateY(2px); border-bottom-width: 1px; background: #eef7f2; }
 #log-amount .btn { width: 100%; }
 
@@ -1854,6 +1868,7 @@ body[data-screen="home"] .dialogue-choice { min-height: 44px; padding: 7px 8px; 
   .credit-metrics { gap: 3px; }
   .credit-priority { grid-template-columns: 1fr; }
   .credit-priority .btn { width: 100%; }
+  .log-details-grid { grid-template-columns: 1fr; }
   .debt-add { grid-template-columns: 1fr 76px; }
   .debt-add .btn { grid-column: 1 / -1; }
   .expedition-board { padding: 11px 9px; }

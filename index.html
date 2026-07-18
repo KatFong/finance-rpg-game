@@ -9,7 +9,7 @@
 <title>理財勇者</title>
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="assets/hero.png">
-<link rel="stylesheet" href="style.css?v=48">
+<link rel="stylesheet" href="style.css?v=51">
 </head>
 <body data-screen="home">
 
@@ -249,10 +249,21 @@
 <div class="sheet-mask hidden" id="log-mask">
   <div class="sheet" id="log-sheet" role="dialog" aria-modal="true" aria-labelledby="log-step-title">
     <div class="sheet-handle"></div>
+    <div class="log-sheet-top">
+      <div class="log-mode-switch" id="log-mode-switch" role="group" aria-label="記錄種類">
+        <button class="active" type="button" data-log-mode="expense" aria-pressed="true">支出</button>
+        <button type="button" data-log-mode="income" aria-pressed="false">收入</button>
+      </div>
+      <span class="log-mode-label hidden" id="log-mode-label">債務還款</span>
+      <button class="icon-btn" id="btn-log-close" type="button" aria-label="關閉記帳面板" title="關閉"><span class="icon" data-icon="close"></span></button>
+    </div>
     <div class="sheet-guide"><span class="guide-avatar"><img class="art" data-art="strategist" alt="錢錢軍師"></span><p id="log-guide">講我知發生咗咩事，我會幫你記入今日冒險。</p></div>
-    <h3 class="sheet-title" id="log-step-title">今日使咗喺邊度？</h3>
+    <div class="log-step-head">
+      <button class="icon-btn hidden" id="btn-log-back" type="button" aria-label="返回選擇分類" title="返回"><span class="icon" data-icon="back"></span></button>
+      <h3 class="sheet-title" id="log-step-title">今日使咗喺邊度？</h3>
+    </div>
     <div id="log-quick" class="quick-log hidden">
-      <div class="quick-log-head"><b>最近常用</b><span>一按就記低</span></div>
+      <div class="quick-log-head"><b>最近常用</b><span>帶入後再確認</span></div>
       <div id="log-quick-list" class="quick-log-grid"></div>
     </div>
     <div id="log-cats" class="cat-grid"></div>
@@ -266,8 +277,16 @@
         </div>
         <p id="log-impact-hint">會扣減今日安心額，適合餐飲、交通同一般購物。</p>
       </div>
+      <button class="log-details-toggle" id="log-details-toggle" type="button" aria-expanded="false"><span class="icon" data-icon="edit"></span><span id="log-details-toggle-copy">補充商戶、日期或付款卡</span></button>
+      <div class="log-details hidden" id="log-details">
+        <div class="account-form-grid log-details-grid">
+          <label class="full"><span id="log-name-label">商戶／名稱 <small>選填</small></span><input id="log-name" maxlength="40" placeholder="例如：午餐、超市"></label>
+          <label><span>記錄日期</span><input id="log-date" type="date"></label>
+          <label id="log-card-label"><span>付款位置</span><select id="log-card"><option value="">現金／銀行</option></select></label>
+        </div>
+      </div>
       <div class="numpad" id="numpad"></div>
-      <button class="btn primary big" id="btn-log-save">確認</button>
+      <button class="btn primary big" id="btn-log-save">記低呢個足印</button>
     </div>
   </div>
 </div>
@@ -723,10 +742,10 @@
 <div id="toast" class="hidden"></div>
 
 <script>window.FRPG_CONFIG = { advisorApiUrl: '' };</script>
-<script src="vault.js?v=48"></script>
-<script src="gameplay.js?v=48"></script>
-<script src="ledger.js?v=48"></script>
-<script src="advisor.js?v=48"></script>
-<script src="app.js?v=48"></script>
+<script src="vault.js?v=51"></script>
+<script src="gameplay.js?v=51"></script>
+<script src="ledger.js?v=51"></script>
+<script src="advisor.js?v=51"></script>
+<script src="app.js?v=51"></script>
 </body>
 </html>

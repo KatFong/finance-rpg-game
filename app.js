@@ -327,6 +327,7 @@ const I = {
   check: `<svg viewBox="0 0 24 24" fill="none" stroke="#3ddc84" stroke-width="3" stroke-linecap="round"><path d="M4 13l5 5L20 6"/></svg>`,
   mic: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0014 0M12 18v3M9 21h6"/></svg>`,
   send: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2L11 13"/><path d="M22 2l-7 20-4-9-9-4z"/></svg>`,
+  back: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>`,
   close: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>`,
   card: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 10h18M7 15h3"/></svg>`,
   chat: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 12a8 8 0 01-8 8H5l-3 2 1-5a9 9 0 1118-5z"/><path d="M8 12h.01M12 12h.01M16 12h.01"/></svg>`,
@@ -713,40 +714,114 @@ function openChest() {
 /* ===================== 記帳 / 還債 sheet ===================== */
 let selCat = null, amtStr = '0', sheetMode = 'expense', sheetBudgetImpact = 'daily', sheetRecordOptions = {};
 function openLogSheet(mode, preset) {
-  sheetMode = mode || 'expense';
+  sheetMode = mode === 'repay' ? 'repay' : mode === 'income' ? 'income' : 'expense';
   selCat = null; amtStr = '0'; sheetBudgetImpact = 'daily'; sheetRecordOptions = {};
+  $('log-mode-switch').classList.toggle('hidden', sheetMode === 'repay');
+  $('log-mode-label').classList.toggle('hidden', sheetMode !== 'repay');
+  document.querySelectorAll('[data-log-mode]').forEach((button) => {
+    const active = button.dataset.logMode === sheetMode;
+    button.classList.toggle('active', active);
+    button.setAttribute('aria-pressed', String(active));
+  });
+  resetLogStep();
+  $('log-mask').classList.remove('hidden');
+  if (sheetMode === 'expense' && preset && CATS.some((category) => category.id === preset.category) && Number(preset.amount) > 0) {
+    amtStr = String(Number(preset.amount));
+    sheetRecordOptions = {
+      merchant: preset.merchant || null,
+      cardId: preset.cardId || null,
+      dateKey: preset.dateKey || todayKey(),
+      intent: preset.intent || null,
+      source: preset.source || 'manual',
+      decisionId: preset.decisionId || null,
+    };
+    showExpenseAmountStep(preset.category, !!(preset.merchant || preset.cardId));
+    const category = CATS.find((item) => item.id === preset.category);
+    $('log-step-title').textContent = `${category.name} — 確認呢筆支出`;
+    $('log-guide').textContent = `軍師已經帶入 ${fmt(preset.amount)}；你仍然可以改金額同預算分類，確認後先會寫入手帳。`;
+    setSheetBudgetImpact(preset.budgetImpact);
+  }
+}
+function closeLogSheet() { $('log-mask').classList.add('hidden'); }
+function setLogMode(mode) {
+  if (sheetMode === 'repay' || !['expense', 'income'].includes(mode) || mode === sheetMode) return;
+  sheetMode = mode;
+  selCat = null; amtStr = '0'; sheetBudgetImpact = 'daily'; sheetRecordOptions = {};
+  document.querySelectorAll('[data-log-mode]').forEach((button) => {
+    const active = button.dataset.logMode === sheetMode;
+    button.classList.toggle('active', active);
+    button.setAttribute('aria-pressed', String(active));
+  });
+  resetLogStep();
+}
+function setLogDetailsExpanded(expanded) {
+  const open = !!expanded && sheetMode !== 'repay';
+  $('log-details').classList.toggle('hidden', !open);
+  $('log-details-toggle').setAttribute('aria-expanded', String(open));
+}
+function populateLogDetails(expanded) {
+  const isIncome = sheetMode === 'income';
+  const selectedCard = S.creditCards.some((card) => card.id === sheetRecordOptions.cardId) ? sheetRecordOptions.cardId : '';
+  $('log-name-label').innerHTML = isIncome ? '收入來源 <small>選填</small>' : '商戶／名稱 <small>選填</small>';
+  $('log-name').placeholder = isIncome ? '例如：月薪、自由工作' : '例如：午餐、超市';
+  $('log-name').value = sheetRecordOptions.merchant || '';
+  $('log-date').value = /^\d{4}-\d{2}-\d{2}$/.test(String(sheetRecordOptions.dateKey || '')) ? sheetRecordOptions.dateKey : todayKey();
+  $('log-date').max = todayKey();
+  $('log-card-label').classList.toggle('hidden', isIncome);
+  $('log-card').innerHTML = '<option value="">現金／銀行</option>' + S.creditCards.map((card) => `<option value="${escapeHtml(card.id)}">${escapeHtml(card.name)}${card.last4 ? ` · ${escapeHtml(card.last4)}` : ''}</option>`).join('');
+  $('log-card').value = isIncome ? '' : selectedCard;
+  const card = selectedCard && S.creditCards.find((item) => item.id === selectedCard);
+  const carried = [sheetRecordOptions.merchant, card && card.name].filter(Boolean).join(' · ');
+  $('log-details-toggle-copy').textContent = carried ? `已帶入：${carried}` : isIncome ? '補充收入來源或日期' : '補充商戶、日期或付款卡';
+  $('log-details-toggle').classList.remove('hidden');
+  setLogDetailsExpanded(expanded);
+}
+function resetLogStep() {
+  $('btn-log-back').classList.add('hidden');
+  $('log-amount').classList.add('hidden');
+  $('log-budget-impact').classList.add('hidden');
+  $('log-details-toggle').classList.add('hidden');
+  $('log-details').classList.add('hidden');
+  if (sheetMode === 'income') {
+    selCat = 'income';
+    $('log-step-title').textContent = '今次有幾多收入？';
+    $('log-guide').textContent = '收入都係旅途補給。記低來源同日期，月尾先會睇到真正收支差。';
+    $('log-cats').classList.add('hidden');
+    $('log-quick').classList.add('hidden');
+    $('log-amount').classList.remove('hidden');
+    populateLogDetails(true);
+    renderAmt();
+    return;
+  }
   $('log-step-title').textContent = sheetMode === 'repay' ? '還俾邊條惡龍？' : '今日使咗喺邊度？';
   $('log-guide').textContent = sheetMode === 'repay'
     ? '揀一條債務惡龍。我建議先集中火力打最細嗰條。'
     : '慢慢諗，今日呢筆支出屬於邊一段生活？';
   $('log-cats').classList.remove('hidden');
-  $('log-amount').classList.add('hidden');
-  $('log-budget-impact').classList.add('hidden');
   renderCats();
   renderQuickLogs();
-  $('log-mask').classList.remove('hidden');
-  if (sheetMode === 'expense' && preset && CATS.some((category) => category.id === preset.category) && Number(preset.amount) > 0) {
-    selCat = preset.category;
-    amtStr = String(Number(preset.amount));
-    sheetRecordOptions = {
-      merchant: preset.merchant || null,
-      cardId: preset.cardId || null,
-      intent: preset.intent || null,
-      source: preset.source || 'manual',
-      decisionId: preset.decisionId || null,
-    };
-    const category = CATS.find((item) => item.id === selCat);
-    $('log-step-title').textContent = `${category.name} — 確認呢筆支出`;
-    $('log-guide').textContent = `軍師已經帶入 ${fmt(preset.amount)}；你仍然可以改金額同預算分類，確認後先會寫入手帳。`;
-    $('log-quick').classList.add('hidden');
-    $('log-cats').classList.add('hidden');
-    $('log-amount').classList.remove('hidden');
-    $('log-budget-impact').classList.remove('hidden');
-    setSheetBudgetImpact(preset.budgetImpact);
-    renderAmt();
-  }
 }
-function closeLogSheet() { $('log-mask').classList.add('hidden'); }
+function showExpenseAmountStep(categoryId, expandDetails = false) {
+  selCat = categoryId;
+  const category = CATS.find((item) => item.id === selCat);
+  if (!category) return;
+  $('log-step-title').textContent = `${category.name} — 使咗幾多？`;
+  $('log-guide').textContent = `${category.name}會計入今日節奏，我會即時更新剩餘安心額。`;
+  $('btn-log-back').classList.remove('hidden');
+  $('log-quick').classList.add('hidden');
+  $('log-cats').classList.add('hidden');
+  $('log-amount').classList.remove('hidden');
+  $('log-budget-impact').classList.remove('hidden');
+  setSheetBudgetImpact(category.id === 'bills' ? 'committed' : sheetBudgetImpact);
+  populateLogDetails(expandDetails);
+  renderAmt();
+}
+function backLogStep() {
+  if (sheetMode === 'income') return;
+  selCat = null;
+  amtStr = '0';
+  resetLogStep();
+}
 function renderQuickLogs() {
   const quick = $('log-quick');
   const list = $('log-quick-list');
@@ -758,9 +833,9 @@ function renderQuickLogs() {
   const seen = new Set();
   const recent = [...S.expenses]
     .sort((a, b) => b.ts - a.ts)
-    .filter((expense) => expense.source !== 'installment')
+    .filter((expense) => !['installment', 'commitment'].includes(expense.source))
     .filter((expense) => {
-      const key = `${expense.cat}:${expense.amount}:${expenseBudgetImpact(expense)}`;
+      const key = `${expense.cat}:${expense.amount}:${expenseBudgetImpact(expense)}:${expense.merchant || ''}:${expense.cardId || ''}`;
       if (seen.has(key)) return false;
       seen.add(key);
       return true;
@@ -770,12 +845,24 @@ function renderQuickLogs() {
   list.innerHTML = recent.map((expense) => {
     const cat = CATS.find((item) => item.id === expense.cat);
     const impact = expenseBudgetImpact(expense);
-    return `<button class="quick-log-btn" data-cat="${expense.cat}" data-amount="${expense.amount}" data-impact="${impact}"><span>${cat.name}</span><b>${fmt(expense.amount)}</b>${impact === 'committed' ? '<small>固定／預留</small>' : ''}</button>`;
+    return `<button class="quick-log-btn" data-quick-id="${escapeHtml(expense.id)}"><span>${escapeHtml(expense.merchant || cat.name)}</span><b>${fmt(expense.amount)}</b>${impact === 'committed' ? '<small>固定／預留</small>' : ''}</button>`;
   }).join('');
   list.querySelectorAll('.quick-log-btn').forEach((button) => {
     button.onclick = () => {
-      closeLogSheet();
-      if (logExpense(button.dataset.cat, Number(button.dataset.amount), { budgetImpact: button.dataset.impact })) switchScreen('home');
+      const expense = S.expenses.find((item) => String(item.id) === button.dataset.quickId);
+      if (!expense) return;
+      amtStr = String(Number(expense.amount));
+      sheetBudgetImpact = expenseBudgetImpact(expense);
+      sheetRecordOptions = {
+        merchant: expense.merchant || null,
+        cardId: expense.cardId || null,
+        dateKey: todayKey(),
+        intent: expense.intent || null,
+        source: 'quick-repeat',
+      };
+      showExpenseAmountStep(expense.cat, false);
+      $('log-step-title').textContent = '確認常用足印';
+      $('log-guide').textContent = `已帶入 ${expense.merchant || (CATS.find((item) => item.id === expense.cat) || { name: '支出' }).name} ${fmt(expense.amount)}。確認資料後先會正式記錄。`;
     };
   });
 }
@@ -793,20 +880,23 @@ function renderCats() {
   $('log-cats').querySelectorAll('.cat-btn').forEach((b) => {
     b.onclick = () => {
       selCat = b.dataset.cat;
+      amtStr = '0';
       if (sheetMode === 'repay') {
         const d = S.debts.find((x) => x.id === Number(selCat));
         $('log-step-title').textContent = `${d.name} — 還幾多？（尚欠 ${fmt(d.balance)}）`;
         $('log-guide').textContent = `每一蚊都係有效傷害。輸入今次想對 ${d.name} 造成幾多傷害。`;
+        $('btn-log-back').classList.remove('hidden');
+        $('log-quick').classList.add('hidden');
+        $('log-cats').classList.add('hidden');
+        $('log-amount').classList.remove('hidden');
+        $('log-budget-impact').classList.add('hidden');
+        $('log-details-toggle').classList.add('hidden');
+        $('log-details').classList.add('hidden');
+        renderAmt();
       } else {
-        const cat = CATS.find((c) => c.id === selCat);
-        $('log-step-title').textContent = `${cat.name} — 使咗幾多？`;
-        setSheetBudgetImpact(cat.id === 'bills' ? 'committed' : 'daily');
-        $('log-budget-impact').classList.remove('hidden');
+        sheetRecordOptions = { dateKey: todayKey(), source: 'manual' };
+        showExpenseAmountStep(selCat, false);
       }
-      $('log-quick').classList.add('hidden');
-      $('log-cats').classList.add('hidden');
-      $('log-amount').classList.remove('hidden');
-      amtStr = '0'; renderAmt();
     };
   });
 }
@@ -889,15 +979,71 @@ function logExpense(cid, amount, opts) {
   }
   return entryId;
 }
+function logIncome(amount, opts) {
+  opts = opts || {};
+  const value = Math.round((Number(amount) + Number.EPSILON) * 100) / 100;
+  const requestedDate = String(opts.dateKey || todayKey());
+  const dateKey = /^\d{4}-\d{2}-\d{2}$/.test(requestedDate) ? requestedDate : todayKey();
+  if (!(value > 0) || dateKey > todayKey()) return false;
+  const source = String(opts.source || '收入').trim().slice(0, 40) || '收入';
+  const isToday = dateKey === todayKey();
+  const entry = {
+    id: `income-${Date.now()}-${Math.floor(Math.random() * 10000)}`,
+    amount: value,
+    dateKey,
+    source,
+    ts: Date.now(),
+  };
+  S.incomes.push(entry);
+  let rewarded = false;
+  if (isToday) {
+    invalidateReview(dateKey);
+    touchStreak();
+    rewarded = claimDailyReward('income-entry', 10, 15);
+  }
+  save();
+  renderAll();
+  if (!opts.skipToast) toast(isToday
+    ? `${source} ${fmt(value)} 已記錄${rewarded ? ' · +10G · +15 XP' : ''}`
+    : `${source} 已補記到 ${dateKey}`);
+  softVibrate([8, 25, 8]);
+  return entry.id;
+}
 function saveSheet() {
   const amount = Number(amtStr);
   if (!selCat || amount <= 0) { toast('輸入返個銀碼先'); return; }
   if (sheetMode === 'repay') {
     closeLogSheet();
     repayDebt(Number(selCat), amount);
-  } else {
+  } else if (sheetMode === 'income') {
+    const dateKey = $('log-date').value;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(dateKey) || dateKey > todayKey()) {
+      toast('請檢查收入日期');
+      setLogDetailsExpanded(true);
+      $('log-date').focus();
+      return;
+    }
+    const source = $('log-name').value.trim() || '收入';
     closeLogSheet();
-    const expenseId = logExpense(selCat, amount, { ...sheetRecordOptions, budgetImpact: sheetBudgetImpact });
+    if (logIncome(amount, { source, dateKey })) switchScreen('home');
+  } else {
+    const dateKey = $('log-date').value;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(dateKey) || dateKey > todayKey()) {
+      toast('請檢查支出日期');
+      setLogDetailsExpanded(true);
+      $('log-date').focus();
+      return;
+    }
+    const cardId = S.creditCards.some((card) => card.id === $('log-card').value) ? $('log-card').value : null;
+    const details = {
+      ...sheetRecordOptions,
+      merchant: $('log-name').value.trim().slice(0, 40) || null,
+      cardId,
+      dateKey,
+      budgetImpact: sheetBudgetImpact,
+    };
+    closeLogSheet();
+    const expenseId = logExpense(selCat, amount, details);
     if (expenseId) {
       if (sheetRecordOptions.decisionId) {
         const decision = (S.decisionEncounters || []).find((entry) => entry.id === sheetRecordOptions.decisionId);
@@ -3507,6 +3653,12 @@ function init() {
     `<button data-k="${k}">${k === 'back' ? '&larr;' : k}</button>`).join('');
   $('numpad').querySelectorAll('button').forEach((b) => (b.onclick = () => numpadPress(b.dataset.k)));
   $('btn-log-save').onclick = saveSheet;
+  $('btn-log-close').onclick = closeLogSheet;
+  $('btn-log-back').onclick = backLogStep;
+  $('log-details-toggle').onclick = () => setLogDetailsExpanded($('log-details-toggle').getAttribute('aria-expanded') !== 'true');
+  document.querySelectorAll('[data-log-mode]').forEach((button) => {
+    button.onclick = () => setLogMode(button.dataset.logMode);
+  });
   document.querySelectorAll('[data-budget-impact]').forEach((button) => {
     button.onclick = () => setSheetBudgetImpact(button.dataset.budgetImpact);
   });
@@ -3641,6 +3793,7 @@ function init() {
   FinanceAdvisor.init({
     getState: () => S,
     recordExpense: logExpense,
+    recordIncome: logIncome,
     commit: () => { if (dayHasMoneyActivity(todayKey())) touchStreak(); save(); renderAll(); },
     reward: (gold, xp) => { gainGold(gold); gainXp(xp); },
     dailyReward: (key, gold, xp, eligible = true) => eligible && claimDailyReward(key, gold, xp),
