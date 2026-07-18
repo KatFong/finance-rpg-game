@@ -9,7 +9,7 @@
 <title>理財勇者</title>
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="assets/hero.png">
-<link rel="stylesheet" href="style.css?v=35">
+<link rel="stylesheet" href="style.css?v=40">
 </head>
 <body data-screen="home">
 
@@ -230,7 +230,7 @@
 
 <!-- ===== 記帳面板 ===== -->
 <div class="sheet-mask hidden" id="log-mask">
-  <div class="sheet" id="log-sheet">
+  <div class="sheet" id="log-sheet" role="dialog" aria-modal="true" aria-labelledby="log-step-title">
     <div class="sheet-handle"></div>
     <div class="sheet-guide"><span class="guide-avatar"><img class="art" data-art="strategist" alt="錢錢軍師"></span><p id="log-guide">講我知發生咗咩事，我會幫你記入今日冒險。</p></div>
     <h3 class="sheet-title" id="log-step-title">今日使咗喺邊度？</h3>
@@ -257,7 +257,7 @@
 
 <!-- ===== 願望任務表格 ===== -->
 <div class="sheet-mask hidden" id="goal-form-mask">
-  <form class="sheet account-sheet goal-sheet" id="goal-form" role="dialog" aria-labelledby="goal-form-title">
+  <form class="sheet account-sheet goal-sheet" id="goal-form" role="dialog" aria-modal="true" aria-labelledby="goal-form-title">
     <div class="sheet-handle"></div>
     <div class="form-sheet-head">
       <div><span>真實主線</span><h3 id="goal-form-title">建立願望任務</h3></div>
@@ -288,7 +288,7 @@
 
 <!-- ===== 願望儲蓄表格 ===== -->
 <div class="sheet-mask hidden" id="goal-contribution-mask">
-  <form class="sheet account-sheet goal-sheet" id="goal-contribution-form" role="dialog" aria-labelledby="goal-contribution-title">
+  <form class="sheet account-sheet goal-sheet" id="goal-contribution-form" role="dialog" aria-modal="true" aria-labelledby="goal-contribution-title">
     <div class="sheet-handle"></div>
     <div class="form-sheet-head">
       <div><span>主線補給</span><h3 id="goal-contribution-title">存入願望進度</h3></div>
@@ -313,7 +313,7 @@
 
 <!-- ===== 信用卡表格 ===== -->
 <div class="sheet-mask hidden" id="card-form-mask">
-  <form class="sheet account-sheet" id="card-form" role="dialog" aria-labelledby="card-form-title">
+  <form class="sheet account-sheet" id="card-form" role="dialog" aria-modal="true" aria-labelledby="card-form-title">
     <div class="sheet-handle"></div>
     <div class="form-sheet-head">
       <div><span>信用卡迷宮</span><h3 id="card-form-title">新增信用卡</h3></div>
@@ -338,7 +338,7 @@
 
 <!-- ===== 信用卡還款表格 ===== -->
 <div class="sheet-mask hidden" id="card-payment-mask">
-  <form class="sheet account-sheet" id="card-payment-form" role="dialog" aria-labelledby="card-payment-title">
+  <form class="sheet account-sheet" id="card-payment-form" role="dialog" aria-modal="true" aria-labelledby="card-payment-title">
     <div class="sheet-handle"></div>
     <div class="form-sheet-head">
       <div><span>還款轉移</span><h3 id="card-payment-title">記信用卡還款</h3></div>
@@ -360,7 +360,7 @@
 
 <!-- ===== 軍師 AI 對話 ===== -->
 <div class="sheet-mask hidden" id="advisor-mask">
-  <div class="sheet advisor-sheet" id="advisor-sheet" role="dialog" aria-labelledby="advisor-title">
+  <div class="sheet advisor-sheet" id="advisor-sheet" role="dialog" aria-modal="true" aria-labelledby="advisor-title">
     <div class="sheet-handle"></div>
     <div class="advisor-head">
       <span class="guide-avatar"><img class="art" data-art="strategist" alt="錢錢軍師"></span>
@@ -387,7 +387,7 @@
 
 <!-- ===== 存檔水晶 ===== -->
 <div class="sheet-mask hidden" id="vault-mask">
-  <div class="sheet vault-sheet" id="vault-sheet" role="dialog" aria-labelledby="vault-title">
+  <div class="sheet vault-sheet" id="vault-sheet" role="dialog" aria-modal="true" aria-labelledby="vault-title">
     <div class="sheet-handle"></div>
     <div class="vault-head">
       <span class="vault-art"><img class="art" data-art="chest-closed" alt="存檔寶箱"></span>
@@ -421,7 +421,7 @@
 
 <!-- ===== 消費決策遭遇 ===== -->
 <div class="sheet-mask hidden" id="decision-mask">
-  <div class="sheet decision-sheet" id="decision-sheet" role="dialog" aria-labelledby="decision-title">
+  <div class="sheet decision-sheet" id="decision-sheet" role="dialog" aria-modal="true" aria-labelledby="decision-title">
     <div class="sheet-handle"></div>
     <div class="decision-head">
       <span class="decision-portrait"><img class="art" data-art="strategist" alt="錢錢軍師"></span>
@@ -473,9 +473,9 @@
 
 <!-- ===== 寶箱 ===== -->
 <div class="modal-mask hidden" id="chest-mask">
-  <div class="modal chest-modal">
+  <div class="modal chest-modal" role="dialog" aria-modal="true" aria-labelledby="chest-title">
     <h3 id="chest-title">發現寶箱！</h3>
-    <img class="art chest-img shake" id="chest-img" data-art="chest-closed" alt="寶箱">
+    <img class="art chest-img shake" id="chest-img" data-art="chest-closed" alt="寶箱" role="button" tabindex="0" aria-label="打開寶箱">
     <p id="chest-hint">㩒個寶箱打開佢</p>
     <div class="chest-reward hidden" id="chest-reward"></div>
     <button class="btn primary hidden" id="chest-close">收好獎勵</button>
@@ -484,7 +484,7 @@
 
 <!-- ===== 升級 / 通用彈窗 ===== -->
 <div class="modal-mask hidden" id="pop-mask">
-  <div class="modal" id="pop-box">
+  <div class="modal" id="pop-box" role="dialog" aria-modal="true" aria-labelledby="pop-title">
     <h3 id="pop-title"></h3>
     <div id="pop-body"></div>
     <div class="modal-actions">
@@ -496,7 +496,7 @@
 
 <!-- ===== 新手設定（財務問卷） ===== -->
 <div class="modal-mask welcome-mask hidden" id="onboard-mask">
-  <div class="modal onboard">
+  <div class="modal onboard" role="dialog" aria-modal="true" aria-label="理財勇者序章">
     <div class="ob-progress"><div id="ob-bar"></div></div>
     <div class="ob-loading-screen" aria-live="polite">
       <span class="ob-loading-mark" aria-hidden="true"></span>
@@ -610,9 +610,9 @@
 <div id="toast" class="hidden"></div>
 
 <script>window.FRPG_CONFIG = { advisorApiUrl: '' };</script>
-<script src="vault.js?v=35"></script>
-<script src="gameplay.js?v=35"></script>
-<script src="advisor.js?v=35"></script>
-<script src="app.js?v=35"></script>
+<script src="vault.js?v=40"></script>
+<script src="gameplay.js?v=40"></script>
+<script src="advisor.js?v=40"></script>
+<script src="app.js?v=40"></script>
 </body>
 </html>

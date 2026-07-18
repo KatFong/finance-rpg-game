@@ -180,6 +180,10 @@ function meta(k) {
   if (typeof S.dayMeta[k].reviewed !== 'boolean') S.dayMeta[k].reviewed = false;
   if (typeof S.dayMeta[k].reviewRewarded !== 'boolean') S.dayMeta[k].reviewRewarded = false;
   if (!S.dayMeta[k].questsClaimed) S.dayMeta[k].questsClaimed = [];
+  if (!S.dayMeta[k].rewardFlags || typeof S.dayMeta[k].rewardFlags !== 'object') S.dayMeta[k].rewardFlags = {};
+  if (!Number.isInteger(S.dayMeta[k].loggedXpCount) || S.dayMeta[k].loggedXpCount < 0) S.dayMeta[k].loggedXpCount = 0;
+  if (!Number.isInteger(S.dayMeta[k].chestRolls) || S.dayMeta[k].chestRolls < 0) S.dayMeta[k].chestRolls = 0;
+  if (typeof S.dayMeta[k].firstChestRewarded !== 'boolean') S.dayMeta[k].firstChestRewarded = false;
   return S.dayMeta[k];
 }
 function invalidateReview(k) {
@@ -282,7 +286,10 @@ function initIcons(root) {
 
 /* ===================== DOM helpers ===================== */
 const $ = (id) => document.getElementById(id);
-const fmt = (n) => '$' + Math.round(n).toLocaleString('en-US');
+const fmt = (n) => {
+  const value = Math.round(Number(n) || 0);
+  return `${value < 0 ? '-$' : '$'}${Math.abs(value).toLocaleString('en-US')}`;
+};
 const escapeHtml = (value) => String(value == null ? '' : value)
   .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
   .replace(/"/g, '&quot;').replace(/'/g, '&#039;');
@@ -510,10 +517,22 @@ function toast(msg) {
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => t.classList.add('hidden'), 2200);
 }
-function closePopup() {
+const popupQueue = [];
+function showNextPopup() {
+  if (!$('pop-mask').classList.contains('hidden') || !popupQueue.length) return;
+  const next = popupQueue.shift();
+  popup(next.title, next.bodyHtml, next.options);
+}
+function closePopup(callback) {
   $('pop-mask').classList.add('hidden');
+  if (callback) callback();
+  if ($('pop-mask').classList.contains('hidden')) setTimeout(showNextPopup, 0);
 }
 function popup(title, bodyHtml, options) {
+  if (!$('pop-mask').classList.contains('hidden')) {
+    popupQueue.push({ title, bodyHtml, options });
+    return;
+  }
   const settings = options || {};
   const confirm = $('pop-close');
   const cancel = $('pop-cancel');
@@ -523,12 +542,10 @@ function popup(title, bodyHtml, options) {
   cancel.textContent = settings.cancelLabel || '取消';
   cancel.classList.toggle('hidden', !settings.cancelLabel);
   confirm.onclick = () => {
-    closePopup();
-    if (settings.onConfirm) settings.onConfirm();
+    closePopup(settings.onConfirm);
   };
   cancel.onclick = () => {
-    closePopup();
-    if (settings.onCancel) settings.onCancel();
+    closePopup(settings.onCancel);
   };
   $('pop-mask').classList.remove('hidden');
   initArt($('pop-box')); initIcons($('pop-box'));
@@ -539,15 +556,26 @@ function gainGold(n) { S.gold += n; }
 function gainXp(n) {
   S.xp += n;
   let leveled = false;
+  let levelGold = 0;
   while (S.xp >= xpNeed(S.level)) {
     S.xp -= xpNeed(S.level);
     S.level++;
     leveled = true;
-    gainGold(25 * S.level);
+    const reward = 25 * S.level;
+    levelGold += reward;
+    gainGold(reward);
   }
   if (leveled) {
-    popup(`升呢！Lv.${S.level}`, `<p style="color:var(--dim);font-size:13px;line-height:1.6">勇者更強大喇！<br>升級獎勵 <b style="color:var(--gold)">${25 * S.level} 金幣</b> 已入袋。</p>`);
+    popup(`升呢！Lv.${S.level}`, `<p style="color:var(--dim);font-size:13px;line-height:1.6">勇者更強大喇！<br>今次升級獎勵合共 <b style="color:var(--gold)">${levelGold} 金幣</b> 已入袋。</p>`);
   }
+}
+function claimDailyReward(key, gold, xp) {
+  const todayMeta = meta(todayKey());
+  if (todayMeta.rewardFlags[key]) return false;
+  todayMeta.rewardFlags[key] = true;
+  if (gold) gainGold(gold);
+  if (xp) gainXp(xp);
+  return true;
 }
 
 /* ===================== 累積同行日 ===================== */
@@ -561,7 +589,18 @@ function touchStreak() {
 /* ===================== 寶箱 ===================== */
 let chestPending = null;
 function maybeChest(guaranteed) {
-  if (guaranteed || Math.random() < chestChance()) {
+  const todayMeta = meta(todayKey());
+  if (chestPending || !$('chest-mask').classList.contains('hidden') || todayMeta.chests >= 3) return;
+  let won = false;
+  if (guaranteed && !todayMeta.firstChestRewarded) {
+    todayMeta.firstChestRewarded = true;
+    won = true;
+  } else if (todayMeta.chestRolls < 5) {
+    todayMeta.chestRolls += 1;
+    won = Math.random() < chestChance();
+  }
+  save();
+  if (won) {
     const r = Math.random();
     let gold;
     if (r < 0.05) gold = 100 + Math.floor(Math.random() * 50);
@@ -578,6 +617,7 @@ function maybeChest(guaranteed) {
     $('chest-reward').classList.add('hidden');
     $('chest-close').classList.add('hidden');
     $('chest-mask').classList.remove('hidden');
+    setTimeout(() => img.focus(), 80);
   }
 }
 function openChest() {
@@ -676,7 +716,7 @@ function renderQuickLogs() {
 function renderCats() {
   if (sheetMode === 'repay') {
     $('log-cats').innerHTML = snowballOrder().map((d, i) =>
-      `<button class="cat-btn debt-btn" data-cat="${d.id}"><span class="icon" data-icon="sword"></span>${d.name}${i === 0 ? '<span class="focus-tag">主攻</span>' : ''}<span class="cat-sub">${fmt(d.balance)}</span></button>`
+      `<button class="cat-btn debt-btn" data-cat="${d.id}"><span class="icon" data-icon="sword"></span>${escapeHtml(d.name)}${i === 0 ? '<span class="focus-tag">主攻</span>' : ''}<span class="cat-sub">${fmt(d.balance)}</span></button>`
     ).join('');
   } else {
     $('log-cats').innerHTML = CATS.map((c) =>
@@ -752,14 +792,22 @@ function logExpense(cid, amount, opts) {
   }
   if (isToday) invalidateReview(t);
   if (isToday && budgetImpact === 'daily' && meta(t).noSpend) { meta(t).noSpend = false; toast('今日零消費標記已取消'); }
+  let xpAwarded = false;
   if (isToday) {
     touchStreak();
-    gainXp(10);
+    const todayMeta = meta(t);
+    if (todayMeta.loggedXpCount < 3) {
+      todayMeta.loggedXpCount += 1;
+      xpAwarded = true;
+      gainXp(10);
+    }
   }
   save();
   renderAll();
   toast(isToday
-    ? (budgetImpact === 'committed' ? `已記低 ${fmt(amount)} · 固定／預留，不扣今日額度` : `已記低 ${fmt(amount)} · XP +10`)
+    ? (budgetImpact === 'committed'
+      ? `已記低 ${fmt(amount)} · 固定／預留，不扣今日額度${xpAwarded ? ' · XP +10' : ''}`
+      : `已記低 ${fmt(amount)}${xpAwarded ? ' · XP +10' : ''}`)
     : `已補記 ${t} · ${fmt(amount)}`);
   softVibrate([8, 30, 8]);
   if (isToday) {
@@ -806,17 +854,25 @@ function repayDebt(debtId, amount) {
   S.repayments.push({ id: Date.now(), ts: Date.now(), debtId, amount: pay });
   invalidateReview(todayKey());
   touchStreak();
-  gainGold(20);
   if (d.balance === 0) {
-    gainGold(300);
-    gainXp(500);
+    let rewardCopy;
+    if (!d.rewarded) {
+      d.rewarded = true;
+      gainGold(300);
+      gainXp(500);
+      rewardCopy = '+300 金幣 · +500 XP';
+    } else if (claimDailyReward('debt-payment', 20, 30)) {
+      rewardCopy = '+20 金幣 · +30 XP（今日還款獎勵）';
+    } else {
+      rewardCopy = '通關寶箱同今日還款獎勵已經領取；進度照樣保留。';
+    }
     save(); renderAll();
     const remain = liveDebts().length;
-    popup('惡龍被消滅！', `<img class="art" data-art="boss" style="width:90px;height:90px;object-fit:contain;filter:grayscale(1) brightness(.6)"><p style="color:var(--dim);font-size:13px;line-height:1.7"><b style="color:var(--text)">${d.name}</b> 全數還清！<br><b style="color:var(--gold)">+300 金幣 · +500 XP</b><br>${remain > 0 ? `雪球滾大咗：將呢筆月供全數加落下一條龍「${snowballOrder()[0].name}」身上！` : '你已經無債一身輕，開始儲應急庫啦！'}</p>`);
+    popup('惡龍被消滅！', `<img class="art" data-art="boss" style="width:90px;height:90px;object-fit:contain;filter:grayscale(1) brightness(.6)"><p style="color:var(--dim);font-size:13px;line-height:1.7"><b style="color:var(--text)">${escapeHtml(d.name)}</b> 全數還清！<br><b style="color:var(--gold)">${rewardCopy}</b><br>${remain > 0 ? `雪球滾大咗：將呢筆月供全數加落下一條龍「${escapeHtml(snowballOrder()[0].name)}」身上！` : '你已經無債一身輕，開始儲應急庫啦！'}</p>`);
   } else {
-    gainXp(30);
+    const rewarded = claimDailyReward('debt-payment', 20, 30);
     save(); renderAll();
-    popup('斬龍成功！', `<p style="color:var(--dim);font-size:13px;line-height:1.7">對 <b style="color:var(--text)">${d.name}</b> 造成 <b style="color:var(--hp2)">${fmt(pay)}</b> 傷害！<br>尚欠 ${fmt(d.balance)}<br><b style="color:var(--gold)">+20 金幣 · +30 XP</b></p>`);
+    popup('斬龍成功！', `<p style="color:var(--dim);font-size:13px;line-height:1.7">對 <b style="color:var(--text)">${escapeHtml(d.name)}</b> 造成 <b style="color:var(--hp2)">${fmt(pay)}</b> 傷害！<br>尚欠 ${fmt(d.balance)}<br><b style="color:var(--gold)">${rewarded ? '+20 金幣 · +30 XP' : '今日還款獎勵已領取；斬龍進度照樣保留。'}</b></p>`);
   }
   softVibrate([12, 35, 18]);
   pulseScene();
@@ -999,7 +1055,7 @@ function buildAdvice() {
     const order = snowballOrder();
     out.push({
       t: '雪球還債法',
-      b: `你有 ${debts.length} 條惡龍（共 ${fmt(totalDebt())}）。打法：每月先俾齊所有債嘅最低還款，剩返嘅火力全部集中斬最細嗰條 —「${order[0].name}」（${fmt(order[0].balance)}）。消滅一條，就將佢嘅月供成筆滾落下一條度。細龍死得快，你嘅士氣同還款力會好似雪球咁愈滾愈大。`,
+      b: `你有 ${debts.length} 條惡龍（共 ${fmt(totalDebt())}）。打法：每月先俾齊所有債嘅最低還款，剩返嘅火力全部集中斬最細嗰條 —「${escapeHtml(order[0].name)}」（${fmt(order[0].balance)}）。消滅一條，就將佢嘅月供成筆滾落下一條度。細龍死得快，你嘅士氣同還款力會好似雪球咁愈滾愈大。`,
     });
   }
   const ai = armorInfo();
@@ -1090,7 +1146,7 @@ function buildObjective() {
   if (debt) {
     return {
       reward: '+20G · +30 XP',
-      body: `雪球法主攻目標係 <b>${debt.name}</b>（尚欠 ${fmt(debt.balance)}）。有額外現金就優先斬呢條龍。`,
+      body: `雪球法主攻目標係 <b>${escapeHtml(debt.name)}</b>（尚欠 ${fmt(debt.balance)}）。有額外現金就優先斬呢條龍。`,
       label: '還債斬龍',
       action: () => openLogSheet('repay'),
     };
@@ -1871,7 +1927,7 @@ function renderHome() {
   if (debts.length) {
     $('debt-list').innerHTML = debts.map((d, i) => `
       <div class="debt-row">
-        <div class="d-head"><span>${d.name}${i === 0 ? '<span class="focus-tag">主攻</span>' : ''}</span><b>${fmt(d.balance)}</b></div>
+        <div class="d-head"><span>${escapeHtml(d.name)}${i === 0 ? '<span class="focus-tag">主攻</span>' : ''}</span><b>${fmt(d.balance)}</b></div>
         <div class="hpbar debt-hp"><div style="width:${Math.max(2, (d.balance / d.orig) * 100)}%"></div><span>${Math.round((1 - d.balance / d.orig) * 100)}% 已消滅</span></div>
       </div>`).join('') +
       `<button class="btn primary" id="btn-repay">還債（斬龍）</button>`;
@@ -2390,13 +2446,12 @@ function saveCardPaymentForm(event) {
     invalidateReview(dateKey);
     touchStreak();
   }
-  gainGold(15);
-  gainXp(20);
+  const rewarded = dateKey === todayKey() && claimDailyReward('card-payment', 15, 20);
   save();
   closeCardPaymentForm();
   renderAll();
   softVibrate([8, 25, 8]);
-  toast(`${card.name} 已還 ${fmt(amount)} · +15G · +20 XP`);
+  toast(`${card.name} 已還 ${fmt(amount)}${rewarded ? ' · +15G · +20 XP' : ''}`);
 }
 
 function openCardForm(cardId) {
@@ -2619,7 +2674,7 @@ function initOnboard() {
   function renderDebtsDraft() {
     $('ob-debts').innerHTML = debtsDraft.length
       ? debtsDraft.map((d, i) =>
-          `<div class="ob-debt-row"><span>${d.name}</span><b>${fmt(d.balance)}</b><button data-i="${i}" type="button">刪</button></div>`).join('')
+          `<div class="ob-debt-row"><span>${escapeHtml(d.name)}</span><b>${fmt(d.balance)}</b><button data-i="${i}" type="button">刪</button></div>`).join('')
       : '<p class="tip" style="margin:0">未加入任何債務。</p>';
     $('ob-debts').querySelectorAll('button').forEach((b) =>
       (b.onclick = () => { debtsDraft.splice(Number(b.dataset.i), 1); renderDebtsDraft(); }));
@@ -2797,6 +2852,29 @@ function bindLogButton() {
   };
 }
 
+function closeTopOverlay() {
+  if (!$('pop-mask').classList.contains('hidden')) {
+    if (!$('pop-cancel').classList.contains('hidden')) $('pop-cancel').click();
+    else closePopup();
+    return true;
+  }
+  if (!$('chest-mask').classList.contains('hidden')) {
+    if (!$('chest-close').classList.contains('hidden')) $('chest-close').click();
+    else openChest();
+    return true;
+  }
+  if (!$('decision-mask').classList.contains('hidden')) { closeDecisionEncounter(); return true; }
+  if (!$('vault-mask').classList.contains('hidden')) { closeVault(); return true; }
+  if (!$('advisor-mask').classList.contains('hidden')) { FinanceAdvisor.close(); return true; }
+  if (!$('goal-contribution-mask').classList.contains('hidden')) { closeGoalContribution(); return true; }
+  if (!$('goal-form-mask').classList.contains('hidden')) { closeGoalForm(); return true; }
+  if (!$('card-payment-mask').classList.contains('hidden')) { closeCardPaymentForm(); return true; }
+  if (!$('card-form-mask').classList.contains('hidden')) { closeCardForm(); return true; }
+  if (!$('log-mask').classList.contains('hidden')) { closeLogSheet(); return true; }
+  if (!$('dialogue-panel').classList.contains('hidden')) { closeSceneDialogue(); return true; }
+  return false;
+}
+
 /* ===================== 啟動 ===================== */
 function init() {
   initArt(); initIcons();
@@ -2828,7 +2906,7 @@ function init() {
     if (event.target === $('dialogue-panel')) closeSceneDialogue();
   };
   document.addEventListener('keydown', (event) => {
-    if (event.key === 'Escape' && !$('dialogue-panel').classList.contains('hidden')) closeSceneDialogue();
+    if (event.key === 'Escape' && closeTopOverlay()) event.preventDefault();
   });
   $('btn-home-status').onclick = showStatusDialogue;
   $('btn-history-add').onclick = () => openLogSheet('expense');
@@ -2870,6 +2948,12 @@ function init() {
   $('expedition-claim').onclick = claimExpeditionBonus;
   $('log-mask').onclick = (e) => { if (e.target === $('log-mask')) closeLogSheet(); };
   $('chest-img').onclick = openChest;
+  $('chest-img').onkeydown = (event) => {
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault();
+      openChest();
+    }
+  };
   $('chest-close').onclick = () => $('chest-mask').classList.add('hidden');
   $('boss-claim').onclick = claimBoss;
   $('btn-editfin').onclick = () => openFinWizard('edit');
@@ -2880,6 +2964,7 @@ function init() {
     recordExpense: logExpense,
     commit: () => { if (dayHasMoneyActivity(todayKey())) touchStreak(); save(); renderAll(); },
     reward: (gold, xp) => { gainGold(gold); gainXp(xp); },
+    dailyReward: (key, gold, xp, eligible = true) => eligible && claimDailyReward(key, gold, xp),
     invalidateReview: () => invalidateReview(todayKey()),
     toast,
     vibrate: softVibrate,

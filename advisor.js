@@ -522,7 +522,7 @@
         dateKey: incomeDate, source: draft.merchant || '收入', ts: Date.now(),
       });
       if (incomeDate === bridge.today()) bridge.invalidateReview();
-      bridge.reward(10, 15);
+      bridge.dailyReward('income-entry', 10, 15, incomeDate === bridge.today());
       bridge.commit();
       confirmation = `${fmt(draft.amount)} 收入已經寫入冒險手帳。`;
     } else if (draft.kind === 'expense') {
@@ -576,7 +576,7 @@
       card.currentBalance = roundMoney(Math.max(0, Number(card.currentBalance || 0) - amount));
       state.cardPayments.push({ id: makeId('cardpay'), cardId: card.id, amount, dateKey: paymentDate, ts: Date.now() });
       if (paymentDate === bridge.today()) bridge.invalidateReview();
-      bridge.reward(15, 20);
+      bridge.dailyReward('card-payment', 15, 20, paymentDate === bridge.today());
       bridge.commit();
       confirmation = `${card.name} 已還 ${fmt(amount)}；呢筆係減債，冇當成新消費。`;
     }
@@ -724,7 +724,7 @@
       payment.paidAt = null;
       return;
     }
-    bridge.reward(15, 20);
+    bridge.dailyReward('installment-payment', 15, 20);
     bridge.commit();
     const finished = plan.paidMonths >= plan.termMonths;
     bridge.toast(finished ? `${plan.title} 任務線完成！` : `${plan.title} 已推進到 ${plan.paidMonths}/${plan.termMonths}`);
