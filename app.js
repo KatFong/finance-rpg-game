@@ -65,6 +65,7 @@ const defaults = () => ({
   commitments: [],         // {id, name, amount, dueDay, type, remindDays, autopay, active}
   commitmentSkips: [],     // {id, commitmentId, monthKey, createdAt}
   decisionEncounters: [],  // {id, name, amount, source, intent, status, revisitAt, createdAt}
+  cashflowPlan: null,      // {balance, asOfDate, capturedAt, nextIncomeDate, nextIncomeAmount, buffer}
   lastBackupAt: null,
   gold: 0, xp: 0, level: 1,
   streak: 0, lastLogDate: null, // streak 保留舊欄位名，現代表累積同行日
@@ -92,6 +93,7 @@ function load() {
       state.commitments = Array.isArray(state.commitments) ? state.commitments : [];
       state.commitmentSkips = Array.isArray(state.commitmentSkips) ? state.commitmentSkips : [];
       state.decisionEncounters = Array.isArray(state.decisionEncounters) ? state.decisionEncounters : [];
+      state.cashflowPlan = state.cashflowPlan && typeof state.cashflowPlan === 'object' ? state.cashflowPlan : null;
       return state;
     }
   } catch (e) {}
@@ -144,6 +146,65 @@ function creditStatementReminder(includeUpcoming = true) {
     && entry.daysUntil != null
     && (entry.daysUntil <= 0 || (includeUpcoming && entry.daysUntil <= 3)))
     .sort((a, b) => a.daysUntil - b.daysUntil)[0] || null;
+}
+function monthKeysBetween(startKey, endKey) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(startKey || '')) || !/^\d{4}-\d{2}-\d{2}$/.test(String(endKey || '')) || startKey > endKey) return [];
+  const [startYear, startMonth] = startKey.split('-').map(Number);
+  const [endYear, endMonth] = endKey.split('-').map(Number);
+  const result = [];
+  const cursor = new Date(Date.UTC(startYear, startMonth - 1, 1));
+  const end = new Date(Date.UTC(endYear, endMonth - 1, 1));
+  while (cursor <= end && result.length < 24) {
+    result.push(`${cursor.getUTCFullYear()}-${pad(cursor.getUTCMonth() + 1)}`);
+    cursor.setUTCMonth(cursor.getUTCMonth() + 1);
+  }
+  return result;
+}
+function cashflowObligationSource(plan) {
+  if (!plan || !/^\d{4}-\d{2}-\d{2}$/.test(String(plan.nextIncomeDate || ''))) return { obligations: [], statementGaps: [], cardCommitments: 0 };
+  const obligations = [];
+  let cardCommitments = 0;
+  monthKeysBetween(todayKey(), plan.nextIncomeDate).forEach((mk) => {
+    FinanceGameplay.monthlyCommitmentSchedule(S.commitments, S.expenses, S.commitmentSkips, mk, todayKey()).items
+      .filter((item) => !['paid', 'skipped'].includes(item.status) && item.dueDate <= plan.nextIncomeDate)
+      .forEach((item) => {
+        if (item.cardId) {
+          cardCommitments += 1;
+          return;
+        }
+        obligations.push({ id: `${item.id}-${mk}`, kind: 'commitment', name: item.name, amount: item.amount, dueDate: item.dueDate });
+      });
+  });
+  const statementGaps = [];
+  (S.creditCards || []).forEach((card) => {
+    const statement = creditStatementModel(card);
+    const validDueDate = /^\d{4}-\d{2}-\d{2}$/.test(String(card.statementDueDate || ''));
+    const missingStatementAmount = statement.currentBalance > 0 && !statement.statementKnown;
+    const missingStatementDate = statement.statementKnown && statement.statementDue > 0 && !validDueDate;
+    if (missingStatementAmount || missingStatementDate) {
+      statementGaps.push(card);
+      return;
+    }
+    if (statement.statementKnown && statement.statementDue > 0 && validDueDate && card.statementDueDate <= plan.nextIncomeDate) {
+      obligations.push({ id: card.id, kind: 'card', name: `${card.name} 今期帳單`, amount: statement.statementDue, dueDate: card.statementDueDate });
+    }
+  });
+  return { obligations, statementGaps, cardCommitments };
+}
+function cashflowModel() {
+  const plan = S.cashflowPlan;
+  const source = cashflowObligationSource(plan);
+  return {
+    ...FinanceCashflow.forecastCashflow({
+      plan,
+      state: S,
+      todayKey: todayKey(),
+      obligations: source.obligations,
+      dailyBaseline: safeToSpendToday().safe,
+    }),
+    statementGaps: source.statementGaps,
+    cardCommitments: source.cardCommitments,
+  };
 }
 function mondayOf(d) { const x = new Date(d); x.setDate(x.getDate() - ((x.getDay() + 6) % 7)); return x; }
 function weekKey() { return keyOf(mondayOf(new Date())); }
@@ -315,6 +376,7 @@ const I = {
   search: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M16 16l5 5"/></svg>`,
   bag: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 8h14l-1 12a2 2 0 01-2 2H8a2 2 0 01-2-2L5 8z"/><path d="M8 8V6a4 4 0 018 0v2"/></svg>`,
   chart: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 20V10M10 20V4M16 20v-8M20 20H4"/></svg>`,
+  route: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="18" r="2"/><circle cx="18" cy="6" r="2"/><path d="M7.5 16.5c2.5-2 2.5-4 0-6S7 6 10 6h6"/></svg>`,
   food: `<svg viewBox="0 0 24 24" fill="none" stroke="#ffc93c" stroke-width="2" stroke-linecap="round"><path d="M4 11h16a8 8 0 01-16 0z" fill="#3a2b6b"/><path d="M8 8c0-1 .5-2 .5-2M12 8c0-1 .5-2 .5-2M16 8c0-1 .5-2 .5-2"/></svg>`,
   transport: `<svg viewBox="0 0 24 24" fill="none" stroke="#7fd0ff" stroke-width="2" stroke-linecap="round"><rect x="4" y="4" width="16" height="13" rx="3" fill="#3a2b6b"/><path d="M4 10h16M8 21l1-4M16 21l-1-4"/><circle cx="8.5" cy="14" r="1" fill="#7fd0ff"/><circle cx="15.5" cy="14" r="1" fill="#7fd0ff"/></svg>`,
   shopping: `<svg viewBox="0 0 24 24" fill="none" stroke="#ff9fb6" stroke-width="2" stroke-linecap="round"><path d="M5 8h14l-1 12a2 2 0 01-2 2H8a2 2 0 01-2-2L5 8z" fill="#3a2b6b"/><path d="M8 8V6a4 4 0 018 0v2"/></svg>`,
@@ -502,7 +564,8 @@ function renderSceneDialogue(force) {
   const pendingDecision = dueDecision();
   const billReminder = commitmentReminder(true);
   const cardReminder = creditStatementReminder(true);
-  const key = [todayKey(), S.heroName, pace.safe, bossMaxHp(), spent, logsToday(), bossDamage(), S.boss.claimed, S.lastLogDate, objective.label, cardReminder && cardReminder.statement.statementDue].join('|');
+  const cashflow = cashflowModel();
+  const key = [todayKey(), S.heroName, pace.safe, bossMaxHp(), spent, logsToday(), bossDamage(), S.boss.claimed, S.lastLogDate, objective.label, cardReminder && cardReminder.statement.statementDue, cashflow.status, cashflow.gapAmount].join('|');
   if (!force && activeDialogueKey === key && homeReminder) return;
   activeDialogueKey = key;
 
@@ -511,6 +574,8 @@ function renderSceneDialogue(force) {
     text = `${S.heroName}，${cardReminder.card.name} 今期帳單尚欠 ${fmt(cardReminder.statement.statementDue)}，${cardReminder.daysUntil < 0 ? `已過到期日 ${Math.abs(cardReminder.daysUntil)} 日` : '今日到期'}。還款唔會再計消費；我會保留截數後新簽帳，唔會一筆抹走。`;
   } else if (billReminder && ['overdue', 'due'].includes(billReminder.status)) {
     text = `${S.heroName}，${billReminder.name}${billReminder.status === 'overdue' ? `已過期 ${Math.abs(billReminder.daysUntil)} 日` : '今日到期'}，預計 ${fmt(billReminder.amount)}。固定帳單唔會扣你今日生活額度，但需要確認實際有冇扣款。`;
+  } else if (cashflow.status === 'gap' && objective.label === '查看補給路線') {
+    text = `${S.heroName}，按目前錢袋同已知到期承諾，下次收入前會比你設定嘅底線少 ${fmt(cashflow.gapAmount)}。呢個係提早看見嘅路況，唔係失敗；先打開航線，揀一筆可以延後、調整或者重新確認嘅項目。`;
   } else if (dead && !S.boss.claimed) {
     text = `${S.heroName}，你做到了！慾望魔王已經倒下，今週每一次克制都冇白費。先收好獎勵啦。`;
   } else if (pendingDecision) {
@@ -1307,6 +1372,7 @@ function buildObjective() {
   const upcomingCardStatement = creditStatementReminder(true);
   const urgentCommitment = commitmentReminder(false);
   const upcomingCommitment = commitmentReminder(true);
+  const cashflow = cashflowModel();
   const untaggedExpense = [...S.expenses].reverse().find((item) => item.dateKey === t && expenseBudgetImpact(item) === 'daily' && !item.intent);
   const claimableQuest = QUESTS.find((q) => questProgress(q) >= q.target && !todayMeta.questsClaimed.includes(q.id));
 
@@ -1326,6 +1392,18 @@ function buildObjective() {
       body: `<b>${escapeHtml(urgentCommitment.name)}</b> ${overdue ? `已過咗 ${Math.abs(urgentCommitment.daysUntil)} 日` : '今日到期'}，預計 ${fmt(urgentCommitment.amount)}。呢筆屬固定承諾，確認付款後唔會扣日常安心額。`,
       label: urgentCommitment.autopay ? '確認已自動扣款' : '記錄承諾付款',
       action: () => openCommitmentPayment(urgentCommitment.id),
+    };
+  }
+  if (cashflow.status === 'gap') {
+    return {
+      reward: `差 ${fmt(cashflow.gapAmount)}`,
+      body: `下次收入前，已知承諾會令行軍錢袋低過保護底線。先睇清楚邊一日同邊一筆造成缺口；路線只計已知資料，唔會代你自動移動資金。`,
+      label: '查看補給路線',
+      action: () => {
+        switchStatsView('overview');
+        switchScreen('stats');
+        requestAnimationFrame(() => $('cashflow-route').scrollIntoView({ behavior: 'smooth', block: 'start' }));
+      },
     };
   }
   if (dmg >= max && !S.boss.claimed) {
@@ -2719,6 +2797,117 @@ function renderCommitments() {
   }));
 }
 
+function cashflowDateLabel(dateKey) {
+  return /^\d{4}-\d{2}-\d{2}$/.test(String(dateKey || '')) ? `${Number(dateKey.slice(5, 7))}月${Number(dateKey.slice(8, 10))}日` : '日期待補';
+}
+
+function renderCashflow() {
+  const root = $('cashflow-content');
+  const model = cashflowModel();
+  $('btn-cashflow-edit').innerHTML = `<span class="icon" data-icon="edit"></span>${S.cashflowPlan ? '重新校準' : '開始設定'}`;
+  if (model.status === 'missing') {
+    root.innerHTML = `<div class="cashflow-empty"><span class="cashflow-mark"><span class="icon" data-icon="route"></span></span><div><b>仲未建立補給路線</b><p>校準可動用銀行／現金同下一次收入，先會計到帳單之間真正可行嘅每日步速。</p></div><button class="btn small primary" data-cashflow-setup>開始校準</button></div>`;
+  } else if (['invalid', 'stale', 'arrived'].includes(model.status)) {
+    const stale = model.status === 'stale';
+    const arrived = model.status === 'arrived';
+    const title = arrived ? '補給已經到帳' : stale ? '補給日已經過咗' : '航線資料未完整';
+    const body = arrived
+      ? `已記入實際收入，現時推算錢袋係 ${fmt(model.reconciled.current)}。為免重複計算預計收入，請用實際餘額重新校準。`
+      : stale
+        ? '收入日過後要用實際錢袋重新校準，系統唔會假設收入已經到帳。'
+        : '檢查錢袋金額、校準日期、下一次收入日期同金額。';
+    root.innerHTML = `<div class="cashflow-empty refresh"><span class="cashflow-mark"><span class="icon" data-icon="route"></span></span><div><b>${title}</b><p>${body}</p></div><button class="btn small primary" data-cashflow-setup>更新航線</button></div>`;
+  } else {
+    const statusCopy = model.status === 'gap'
+      ? { tag: '前方有缺口', title: `下次收入前差 ${fmt(model.gapAmount)}`, body: '先處理一筆到期承諾，或者重新確認保護底線；遊戲唔會替你移動真實資金。' }
+      : model.status === 'tight'
+        ? { tag: '需要放慢步速', title: `每日先守住 ${fmt(model.dailyPace)}`, body: '現金流步速比日常預算緊，今段路採用較低嗰個數。' }
+        : { tag: '航線穩定', title: `可以照 ${fmt(model.dailyPace)}／日行`, body: '已知承諾同保護底線之後，仍可行到下一次收入。' };
+    const events = model.obligations.map((entry) => `<div class="cashflow-event ${entry.overdue ? 'overdue' : ''}"><span class="cashflow-node"></span><div><b>${escapeHtml(entry.name)}</b><small>${entry.overdue ? '已到期 · ' : ''}${cashflowDateLabel(entry.dueDate)}</small></div><strong>-${fmt(entry.amount)}</strong></div>`).join('');
+    const coverage = [
+      model.statementGaps.length ? `${model.statementGaps.length} 張卡嘅今期帳單／到期日未完整，尚未計入。` : '',
+      model.cardCommitments ? `${model.cardCommitments} 個信用卡承諾會先成為卡片結欠，冇當成即時現金扣款。` : '',
+    ].filter(Boolean).join(' ');
+    root.innerHTML = `<div class="cashflow-signal ${model.status}"><span class="cashflow-mark"><span class="icon" data-icon="route"></span></span><div><span>${statusCopy.tag}</span><b>${statusCopy.title}</b><p>${statusCopy.body}</p></div></div>
+      <div class="cashflow-metrics"><div><b>${fmt(model.reconciled.current)}</b><span>推算可動用</span></div><div><b>${fmt(model.obligationTotal)}</b><span>補給前承諾</span></div><div><b>${fmt(model.beforeIncome)}</b><span>承諾後餘額</span></div></div>
+      <div class="cashflow-pace"><div><span>現金流步速</span><b>${fmt(model.runwayDaily)}／日</b></div><div><span>日常預算步速</span><b>${fmt(model.dailyBaseline)}／日</b></div><p>距離 ${cashflowDateLabel(model.nextIncomeDate)} 仲有 ${model.daysToIncome} 日；實際行動採用較低步速。</p></div>
+      <div class="cashflow-timeline"><div class="cashflow-event start"><span class="cashflow-node"></span><div><b>今日行軍錢袋</b><small>由最近校準及其後足印推算</small></div><strong>${fmt(model.reconciled.current)}</strong></div>${events || '<p class="cashflow-no-events">下次收入前未有已知現金承諾。</p>'}<div class="cashflow-event income"><span class="cashflow-node"></span><div><b>下次補給</b><small>${cashflowDateLabel(model.nextIncomeDate)}</small></div><strong>+${fmt(model.nextIncomeAmount)}</strong></div></div>
+      <p class="cashflow-after">補給後推算 <b>${fmt(model.afterIncome)}</b> · 保護底線 ${fmt(model.buffer)}</p>
+      ${coverage ? `<p class="cashflow-coverage"><span class="icon" data-icon="card"></span>${coverage}</p>` : ''}`;
+  }
+  initIcons($('cashflow-route'));
+  root.querySelectorAll('[data-cashflow-setup]').forEach((button) => (button.onclick = openCashflowForm));
+}
+
+function openCashflowForm() {
+  const model = cashflowModel();
+  const current = model.reconciled ? model.reconciled.current : S.cashflowPlan && S.cashflowPlan.balance;
+  const hasCurrent = current !== null && current !== undefined && current !== '' && Number.isFinite(Number(current));
+  const maxIncomeDate = new Date();
+  maxIncomeDate.setDate(maxIncomeDate.getDate() + 93);
+  $('cashflow-balance').value = hasCurrent ? Number(current) : '';
+  $('cashflow-as-of').value = todayKey();
+  $('cashflow-as-of').max = todayKey();
+  $('cashflow-income-date').value = S.cashflowPlan ? S.cashflowPlan.nextIncomeDate || '' : '';
+  $('cashflow-income-date').min = todayKey();
+  $('cashflow-income-date').max = keyOf(maxIncomeDate);
+  $('cashflow-income-amount').value = S.cashflowPlan ? Number(S.cashflowPlan.nextIncomeAmount || 0) || '' : Number((S.finProfile && S.finProfile.income) || 0) || '';
+  $('cashflow-buffer').value = S.cashflowPlan ? Number(S.cashflowPlan.buffer || 0) : '';
+  $('cashflow-clear').classList.toggle('hidden', !S.cashflowPlan);
+  $('cashflow-form-mask').classList.remove('hidden');
+}
+
+function closeCashflowForm() { $('cashflow-form-mask').classList.add('hidden'); }
+
+function saveCashflowPlan(event) {
+  event.preventDefault();
+  const balanceText = $('cashflow-balance').value.trim();
+  const balance = Number(balanceText);
+  const asOfDate = $('cashflow-as-of').value;
+  const nextIncomeDate = $('cashflow-income-date').value;
+  const nextIncomeAmount = Number($('cashflow-income-amount').value);
+  const buffer = Number($('cashflow-buffer').value || 0);
+  const horizon = daysFromToday(nextIncomeDate);
+  if (!balanceText || !Number.isFinite(balance) || !/^\d{4}-\d{2}-\d{2}$/.test(asOfDate) || asOfDate > todayKey()) {
+    toast('請檢查目前錢袋同校準日期');
+    return;
+  }
+  if (!(nextIncomeAmount > 0) || horizon == null || horizon < 0 || horizon > 93) {
+    toast('下次收入要喺未來 93 日內');
+    return;
+  }
+  if (!(buffer >= 0)) {
+    toast('保護底線唔可以係負數');
+    return;
+  }
+  S.cashflowPlan = {
+    balance: Math.round((balance + Number.EPSILON) * 100) / 100,
+    asOfDate,
+    capturedAt: Date.now(),
+    nextIncomeDate,
+    nextIncomeAmount: Math.round((nextIncomeAmount + Number.EPSILON) * 100) / 100,
+    buffer: Math.round((buffer + Number.EPSILON) * 100) / 100,
+  };
+  save();
+  closeCashflowForm();
+  renderAll();
+  toast('現金流航線已更新');
+}
+
+function clearCashflowPlan() {
+  popup('停止現金流航線？', '<p>會移除錢袋校準同下一次收入設定；帳目、信用卡同每月承諾全部保留。</p>', {
+    confirmLabel: '停止航線',
+    cancelLabel: '保留',
+    onConfirm: () => {
+      S.cashflowPlan = null;
+      save();
+      closeCashflowForm();
+      renderAll();
+      toast('現金流航線已停止');
+    },
+  });
+}
+
 function renderStats() {
   const mk = monthKey();
   const monthExp = S.expenses.filter((e) => e.dateKey.startsWith(mk));
@@ -2731,6 +2920,7 @@ function renderStats() {
   const totalGoalSaved = monthGoalContributions.reduce((sum, entry) => sum + Number(entry.amount || 0), 0);
   const currentGoal = activeGoal();
   const currentGoalProgress = currentGoal ? FinanceGameplay.goalProgress(currentGoal, S.goalContributions) : null;
+  renderCashflow();
   renderCommitments();
   let savedTotal = 0;
   const dayKeys = new Set(S.expenses.map((e) => e.dateKey));
@@ -3635,6 +3825,7 @@ function closeTopOverlay() {
   if (!$('entry-edit-mask').classList.contains('hidden')) { closeEntryEdit(); return true; }
   if (!$('goal-contribution-mask').classList.contains('hidden')) { closeGoalContribution(); return true; }
   if (!$('goal-form-mask').classList.contains('hidden')) { closeGoalForm(); return true; }
+  if (!$('cashflow-form-mask').classList.contains('hidden')) { closeCashflowForm(); return true; }
   if (!$('commitment-payment-mask').classList.contains('hidden')) { closeCommitmentPayment(); return true; }
   if (!$('commitment-form-mask').classList.contains('hidden')) { closeCommitmentForm(); return true; }
   if (!$('card-payment-mask').classList.contains('hidden')) { closeCardPaymentForm(); return true; }
@@ -3737,6 +3928,12 @@ function init() {
   $('goal-contribution-close').onclick = closeGoalContribution;
   $('goal-contribution-cancel').onclick = closeGoalContribution;
   $('goal-contribution-mask').onclick = (event) => { if (event.target === $('goal-contribution-mask')) closeGoalContribution(); };
+  $('btn-cashflow-edit').onclick = openCashflowForm;
+  $('cashflow-form').onsubmit = saveCashflowPlan;
+  $('cashflow-form-close').onclick = closeCashflowForm;
+  $('cashflow-form-cancel').onclick = closeCashflowForm;
+  $('cashflow-clear').onclick = clearCashflowPlan;
+  $('cashflow-form-mask').onclick = (event) => { if (event.target === $('cashflow-form-mask')) closeCashflowForm(); };
   $('commitment-form').onsubmit = saveCommitmentForm;
   $('commitment-form-close').onclick = closeCommitmentForm;
   $('commitment-form-cancel').onclick = closeCommitmentForm;
