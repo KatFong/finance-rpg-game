@@ -22,14 +22,14 @@ const INTENTS = [
 const SHOP = [
   { id: 'sword', name: '勇者之劍', cost: 300, once: true, desc: '對慾望魔王嘅攻擊力 +15%（儲蓄傷害加成）' },
   { id: 'charm', name: '幸運咒文', cost: 250, once: true, desc: '記帳時寶箱出現率 +10%' },
-  { id: 'shield', name: '連勝護盾', cost: 120, once: false, desc: '消耗品：斷咗連勝嗰陣自動幫你保住一次' },
+  { id: 'shield', name: '收隊徽章', cost: 120, once: true, desc: '永久裝備：每日完成金流盤點，額外獲得 10G' },
   { id: 'cape', name: '黃金披風', cost: 800, once: true, desc: '傳說裝飾：勇者全身發出金光，彰顯理財大師身份' },
 ];
 
 const QUESTS = [
-  { id: 'q_checkin', outcome: '日常掌控', name: '完成今日 Check-in', desc: '記一筆，或者確認今日零消費。', target: 1, gold: 20 },
-  { id: 'q_log', outcome: '看見全貌', name: '補上 3 個金流足印', desc: '唔求完美，只係令今日輪廓清楚一點。', target: 3, gold: 30 },
-  { id: 'q_story', outcome: '有意識選擇', name: '為一筆補上消費故事', desc: '分清生活需要、值得享受，或者一時衝動。', target: 1, gold: 40 },
+  { id: 'q_checkin', outcome: '日常掌控', name: '完成今日 Check-in', desc: '記低任何金流，或者確認今日零日常消費。', target: 1, gold: 20 },
+  { id: 'q_review', outcome: '今日收隊', name: '完成今日金流盤點', desc: '睇一眼日常、固定、收入同還款，確認今日輪廓。', target: 1, gold: 30 },
+  { id: 'q_story', outcome: '有意識選擇', name: '說清一個今日選擇', desc: '為支出補上故事；零日常消費亦係一次主動選擇。', target: 1, gold: 40 },
 ];
 
 /* ===================== 狀態 ===================== */
@@ -47,10 +47,10 @@ const defaults = () => ({
   cardPayments: [],        // {id, cardId, amount, dateKey, ts}
   incomes: [],             // {id, ts, dateKey, source, amount}
   gold: 0, xp: 0, level: 1,
-  streak: 0, lastLogDate: null,
+  streak: 0, lastLogDate: null, // streak 保留舊欄位名，現代表累積同行日
   items: { sword: 0, charm: 0, shield: 0, cape: 0 },
   expenses: [],            // {id, ts, dateKey, cat, amount, budgetImpact:'daily'|'committed', intent?}
-  dayMeta: {},             // dateKey -> {chests, noSpend, questsClaimed:[]}
+  dayMeta: {},             // dateKey -> {chests, noSpend, reviewed, reviewRewarded, questsClaimed:[]}
   boss: { weekKey: null, claimed: false },
 });
 
@@ -131,12 +131,29 @@ function safeToSpendToday() {
 function dayActive(k) {
   return (S.dayMeta[k] && S.dayMeta[k].noSpend) || S.expenses.some((e) => e.dateKey === k);
 }
+function dayHasMoneyActivity(k) {
+  return dayActive(k)
+    || (S.incomes || []).some((entry) => entry.dateKey === k)
+    || (S.cardPayments || []).some((entry) => entry.dateKey === k)
+    || (S.repayments || []).some((entry) => entry.ts && keyOf(new Date(entry.ts)) === k);
+}
+function moneyActivityCount(k) {
+  return S.expenses.filter((entry) => entry.dateKey === k).length
+    + (S.incomes || []).filter((entry) => entry.dateKey === k).length
+    + (S.cardPayments || []).filter((entry) => entry.dateKey === k).length
+    + (S.repayments || []).filter((entry) => entry.ts && keyOf(new Date(entry.ts)) === k).length;
+}
 function meta(k) {
-  if (!S.dayMeta[k]) S.dayMeta[k] = { chests: 0, noSpend: false, questsClaimed: [] };
+  if (!S.dayMeta[k]) S.dayMeta[k] = { chests: 0, noSpend: false, reviewed: false, reviewRewarded: false, questsClaimed: [] };
+  if (typeof S.dayMeta[k].reviewed !== 'boolean') S.dayMeta[k].reviewed = false;
+  if (typeof S.dayMeta[k].reviewRewarded !== 'boolean') S.dayMeta[k].reviewRewarded = false;
   if (!S.dayMeta[k].questsClaimed) S.dayMeta[k].questsClaimed = [];
   return S.dayMeta[k];
 }
-// 每日對魔王嘅傷害上限＝血量五分一：一週最少要出動 5 日先殺到佢（迫每日返嚟）
+function invalidateReview(k) {
+  if (k === todayKey()) meta(k).reviewed = false;
+}
+// 每日傷害有上限，讓魔王反映一週節奏，而唔係被單日數字扭曲。
 function dayDmgCap() { return Math.ceil(bossMaxHp() / 5); }
 function bossDamage() {
   let dmg = 0;
@@ -157,9 +174,9 @@ function snowballOrder() { return [...liveDebts()].sort((a, b) => a.balance - b.
 function armorInfo() {
   const savings = S.finProfile ? S.finProfile.savings : 0;
   const months = savings / Math.max(1, S.monthlyBudget);
-  if (months < 1) return { name: '布衣', months, next: '儲夠 1 個月使費升級皮甲' };
-  if (months < 3) return { name: '皮甲', months, next: '儲夠 3 個月使費升級鐵甲' };
-  if (months < 6) return { name: '鐵甲', months, next: '儲夠 6 個月使費升級龍鱗甲' };
+  if (months < 1) return { name: '布衣', months, next: '儲夠 1 個月日常使費升級皮甲' };
+  if (months < 3) return { name: '皮甲', months, next: '儲夠 3 個月日常使費升級鐵甲' };
+  if (months < 6) return { name: '鐵甲', months, next: '儲夠 6 個月日常使費升級龍鱗甲' };
   return { name: '龍鱗甲', months, next: '' };
 }
 
@@ -351,7 +368,7 @@ function renderSceneDialogue(force) {
   const objective = buildObjective();
   const spent = daySpend(todayKey());
   const pace = safeToSpendToday();
-  const active = dayActive(todayKey());
+  const active = dayHasMoneyActivity(todayKey());
   const returning = S.lastLogDate && S.lastLogDate < yesterdayKey();
   const dead = bossDamage() >= bossMaxHp();
   const period = periodInfo();
@@ -368,10 +385,10 @@ function renderSceneDialogue(force) {
     text = `${period.greeting}，${S.heroName}。今日有 ${fmt(pace.safe)} 日常安心額。固定承諾會另行記錄，唔會一筆打亂今日節奏。`;
   } else if (spent > pace.safe) {
     text = `今日已經用過安心額度。記帳唔係審判；肯望清楚發生咗咩，就已經停止咗逃避，下一筆仍然有選擇。`;
-  } else if (logsToday() < 3) {
-    text = `做得好，${S.heroName}。今日已經記低 ${logsToday()} 筆，仲有 ${fmt(pace.safe - spent)} 可以安心使用。再行一步就更接近每日任務。`;
+  } else if (!meta(todayKey()).reviewed) {
+    text = `做得好，${S.heroName}。今日已有 ${moneyActivityCount(todayKey())} 個金流足印，仲有 ${fmt(Math.max(0, pace.safe - spent))} 可以安心使用。準備好就做今日盤點，唔需要為任務湊數。`;
   } else {
-    text = `今日節奏好穩。你嘅每筆選擇都已經寫入冒險手帳，剩返嘅能量會喺今晚化成對魔王嘅傷害。`;
+    text = '今日盤點完成。你嘅每筆選擇都已經寫入冒險手帳，剩返嘅能量會喺今晚化成對魔王嘅傷害。';
   }
   speak('錢錢軍師', text, sceneChoices(objective));
 }
@@ -463,17 +480,11 @@ function gainXp(n) {
   }
 }
 
-/* ===================== 連勝 ===================== */
+/* ===================== 累積同行日 ===================== */
 function touchStreak() {
   const t = todayKey();
   if (S.lastLogDate === t) return;
-  if (S.lastLogDate === yesterdayKey() ) { S.streak++; }
-  else if (!S.lastLogDate) { S.streak = 1; }
-  else if (S.items.shield > 0) { S.items.shield--; S.streak++; toast('連勝護盾發動！連勝保住咗'); }
-  else {
-    if (S.streak >= 3) toast(`休息完再出發；之前 ${S.streak} 日嘅努力仍然算數`);
-    S.streak = 1;
-  }
+  S.streak = Math.max(0, Number(S.streak) || 0) + 1;
   S.lastLogDate = t;
 }
 
@@ -649,6 +660,7 @@ function logExpense(cid, amount, opts) {
     const card = S.creditCards.find((item) => item.id === opts.cardId);
     if (card) card.currentBalance = Number(card.currentBalance || 0) + Number(amount);
   }
+  if (isToday) invalidateReview(t);
   if (isToday && budgetImpact === 'daily' && meta(t).noSpend) { meta(t).noSpend = false; toast('今日零消費標記已取消'); }
   if (isToday) {
     touchStreak();
@@ -690,6 +702,7 @@ function repayDebt(debtId, amount) {
   const pay = Math.min(amount, d.balance);
   d.balance -= pay;
   S.repayments.push({ id: Date.now(), ts: Date.now(), debtId, amount: pay });
+  invalidateReview(todayKey());
   touchStreak();
   gainGold(20);
   if (d.balance === 0) {
@@ -713,6 +726,7 @@ function markNoSpend() {
   if (dailyLogsToday() > 0) { toast('今日已經有日常支出紀錄喇'); return; }
   if (meta(t).noSpend) { toast('今日已經標記咗零消費'); return; }
   meta(t).noSpend = true;
+  invalidateReview(t);
   touchStreak();
   gainGold(30);
   gainXp(50);
@@ -726,8 +740,8 @@ function markNoSpend() {
 /* ===================== 任務 ===================== */
 function questProgress(q) {
   const t = todayKey(), m = meta(t);
-  if (q.id === 'q_checkin') return dayActive(t) ? 1 : 0;
-  if (q.id === 'q_log') return m.noSpend ? q.target : Math.min(q.target, logsToday());
+  if (q.id === 'q_checkin') return dayHasMoneyActivity(t) ? 1 : 0;
+  if (q.id === 'q_review') return m.reviewed ? 1 : 0;
   if (q.id === 'q_story') return (m.noSpend || S.expenses.some((expense) => expense.dateKey === t && expenseBudgetImpact(expense) === 'daily' && expense.intent)) ? 1 : 0;
   return 0;
 }
@@ -742,7 +756,53 @@ function claimQuest(qid) {
   toast(`任務完成！+${q.gold} 金幣 · +20 XP`);
 }
 
+function reviewToday() {
+  const t = todayKey();
+  const m = meta(t);
+  if (m.reviewed) {
+    toast('今日金流已經盤點完成');
+    return;
+  }
+  if (!dayHasMoneyActivity(t)) {
+    switchScreen('home');
+    toast('先記一筆，或者確認今日零日常消費');
+    return;
+  }
+  const daily = daySpend(t);
+  const committed = dayCommittedSpend(t);
+  const income = (S.incomes || []).filter((entry) => entry.dateKey === t).reduce((sum, entry) => sum + Number(entry.amount || 0), 0);
+  const cardPaid = (S.cardPayments || []).filter((entry) => entry.dateKey === t).reduce((sum, entry) => sum + Number(entry.amount || 0), 0);
+  const debtPaid = (S.repayments || []).filter((entry) => entry.ts && keyOf(new Date(entry.ts)) === t).reduce((sum, entry) => sum + Number(entry.amount || 0), 0);
+  const noSpend = m.noSpend && daily === 0;
+  popup('今日金流盤點', `<div class="review-summary">
+    <p>收隊前望一眼就夠，唔需要為咗完成任務而製造更多紀錄。</p>
+    <div><span>日常支出</span><b>${noSpend ? '已確認 $0' : fmt(daily)}</b></div>
+    <div><span>固定／預留</span><b>${fmt(committed)}</b></div>
+    <div><span>今日收入</span><b class="positive">${fmt(income)}</b></div>
+    <div><span>還卡／還債</span><b>${fmt(cardPaid + debtPaid)}</b></div>
+  </div>`, {
+    confirmLabel: '完成盤點',
+    cancelLabel: '再檢查一下',
+    onConfirm: () => {
+      const firstReview = !m.reviewRewarded;
+      m.reviewed = true;
+      if (firstReview) {
+        m.reviewRewarded = true;
+        gainXp(15);
+        if (S.items.shield > 0) gainGold(10);
+      }
+      save(); renderAll();
+      softVibrate([8, 24, 8]);
+      toast(firstReview ? `今日收隊完成 · +15 XP${S.items.shield > 0 ? ' · +10G' : ''}` : '今日盤點已更新');
+    },
+  });
+}
+
 function startQuest(qid) {
+  if (qid === 'q_review') {
+    reviewToday();
+    return;
+  }
   if (qid === 'q_story') {
     const expense = [...S.expenses].reverse().find((item) => item.dateKey === todayKey() && expenseBudgetImpact(item) === 'daily' && !item.intent);
     if (expense) {
@@ -785,7 +845,7 @@ function buildAdvice() {
   if (!debts.length && ai.months < 3) {
     out.push({
       t: '應急庫任務',
-      b: `你而家嘅護甲係「${ai.name}」（存款夠用 ${ai.months.toFixed(1)} 個月）。下一個目標：儲夠 3 個月使費（${fmt(S.monthlyBudget * 3)}）做應急庫，突發事件先唔會打斷你嘅冒險。`,
+      b: `以目前日常預算估算，你嘅護甲係「${ai.name}」（存款夠用 ${ai.months.toFixed(1)} 個月日常使費）。下一個目標：先儲到 ${fmt(S.monthlyBudget * 3)}；固定承諾仍要另外計入完整應急庫。`,
     });
   }
   if (fp.incomeType === 'variable') {
@@ -809,8 +869,9 @@ function buildObjective() {
   const max = bossMaxHp();
   const debt = snowballOrder()[0];
   const affordable = SHOP.find((it) => S.gold >= it.cost && !(it.once && S.items[it.id] > 0));
-  const storyQuest = QUESTS.find((q) => q.id === 'q_story');
-  const storyReady = storyQuest && questProgress(storyQuest) >= storyQuest.target && !meta(t).questsClaimed.includes(storyQuest.id);
+  const todayMeta = meta(t);
+  const untaggedExpense = [...S.expenses].reverse().find((item) => item.dateKey === t && expenseBudgetImpact(item) === 'daily' && !item.intent);
+  const claimableQuest = QUESTS.find((q) => questProgress(q) >= q.target && !todayMeta.questsClaimed.includes(q.id));
 
   if (dmg >= max && !S.boss.claimed) {
     return {
@@ -820,7 +881,7 @@ function buildObjective() {
       action: claimBoss,
     };
   }
-  if (!dayActive(t)) {
+  if (!dayHasMoneyActivity(t)) {
     return {
       reward: '必爆寶箱',
       body: '今日未出動。記低第一筆支出，或者真係冇使錢就標記零消費，先會計入本週打魔王傷害。',
@@ -828,19 +889,30 @@ function buildObjective() {
       action: () => openLogSheet('expense'),
     };
   }
-  if (logsToday() < 3) {
+  if (untaggedExpense) {
     return {
-      reward: '每日任務',
-      body: `今日已記低 <b>${logsToday()}</b>/3 筆。補到 3 筆就可以完成記帳任務，攞金幣加速買裝備。`,
-      label: '再記一筆',
-      action: () => openLogSheet('expense'),
+      reward: '+40G 任務',
+      body: '呢筆支出已經看見。補上「生活必需、值得享受、定一時衝動」，先會變成對下一次選擇有用嘅故事。',
+      label: '補上故事',
+      action: () => {
+        switchScreen('home');
+        showExpenseReaction(untaggedExpense.cat, untaggedExpense.amount, false, untaggedExpense.id);
+      },
     };
   }
-  if (storyReady) {
+  if (!todayMeta.reviewed) {
     return {
-      reward: '+40G',
-      body: '你已經為今日一筆支出補上故事，唔再只得冷冰冰嘅數字。去任務頁收低獎勵。',
-      label: '去任務頁',
+      reward: '+30G 任務',
+      body: `今日已有 <b>${moneyActivityCount(t)}</b> 個金流足印。收隊前望一眼日常、固定、收入同還款，唔使為湊數再記。`,
+      label: '完成今日盤點',
+      action: reviewToday,
+    };
+  }
+  if (claimableQuest) {
+    return {
+      reward: `${claimableQuest.gold}G`,
+      body: `<b>${claimableQuest.name}</b> 已經完成。去任務頁收低獎勵，今日進度就會一直保留。`,
+      label: '領取任務獎勵',
       action: () => switchScreen('quests'),
     };
   }
@@ -871,8 +943,8 @@ function buildObjective() {
 function buildWeeklyReflection() {
   const days = weekDays();
   const daySet = new Set(days);
-  const expenses = S.expenses.filter((expense) => daySet.has(expense.dateKey));
-  const activeDays = days.filter(dayActive).length;
+  const expenses = S.expenses.filter((expense) => daySet.has(expense.dateKey) && expenseBudgetImpact(expense) === 'daily');
+  const activeDays = days.filter(dayHasMoneyActivity).length;
   const total = expenses.reduce((sum, expense) => sum + expense.amount, 0);
   const byCat = {};
   const byIntent = {};
@@ -892,8 +964,8 @@ function buildWeeklyReflection() {
   }
   if (!expenses.length) {
     return {
-      title: `本週有 ${activeDays} 日零消費`,
-      body: '你有主動確認，而唔係靠「冇記就當冇使」。呢份清楚就係進度。',
+      title: `本週有 ${activeDays} 日完成記錄`,
+      body: '暫時未有日常支出；固定承諾、收入同還款仍然留喺手帳，唔會扭曲日常消費洞察。',
       label: '查看本週節奏',
       action: () => switchScreen('stats'),
     };
@@ -938,8 +1010,7 @@ function buy(id) {
 function renderHud() {
   $('hud-level').textContent = S.level;
   $('hud-gold').textContent = S.gold.toLocaleString('en-US');
-  const broken = S.lastLogDate && S.lastLogDate < yesterdayKey() && !S.items.shield;
-  $('hud-streak').textContent = broken ? 0 : S.streak;
+  $('hud-streak').textContent = S.streak;
   const need = xpNeed(S.level);
   $('hud-xpfill').style.width = Math.min(100, (S.xp / need) * 100) + '%';
   $('hud-xptext').textContent = `Lv.${S.level} · ${S.xp}/${need} XP`;
@@ -950,7 +1021,7 @@ function renderHome() {
   document.body.dataset.period = period.id;
   $('scene-period').textContent = period.label;
   $('scene-date').textContent = new Intl.DateTimeFormat('zh-HK', { month: 'long', day: 'numeric', weekday: 'short' }).format(new Date());
-  $('scene-streak-copy').textContent = S.streak > 0 ? `${S.streak} 日同行` : '今日冒險';
+  $('scene-streak-copy').textContent = S.streak > 0 ? `累積 ${S.streak} 日同行` : '今日冒險';
   $('hero-name').textContent = S.heroName;
   setHeroArt($('hero-img'), S.heroType);
   $('hero-img').classList.toggle('cape', S.items.cape > 0);
@@ -980,13 +1051,13 @@ function renderHome() {
       : `按本月剩餘 ${pace.daysLeft} 日平均分配`);
   $('hero-sub').textContent = rawLeft < 0
     ? `今日比安心額度多 ${fmt(Math.abs(rawLeft))}；唔使補償，下一筆重新選擇。${paceNote}`
-    : (dayActive(todayKey()) ? `今日仲有 ${fmt(left)} 日常安心額。固定／預留支出唔會喺今日再扣。${paceNote}` : `今日未記帳。日常安心額係 ${fmt(pace.safe)}，第一筆有必爆寶箱。${paceNote}`);
-  $('budget-status').textContent = !dayActive(todayKey())
+    : (dayHasMoneyActivity(todayKey()) ? `今日仲有 ${fmt(left)} 日常安心額。固定／預留支出唔會喺今日再扣。${paceNote}` : `今日未記帳。日常安心額係 ${fmt(pace.safe)}，第一筆有必爆寶箱。${paceNote}`);
+  $('budget-status').textContent = !dayHasMoneyActivity(todayKey())
     ? '等待第一步'
     : (rawLeft < 0 ? '已經看見' : (pct > 40 ? '步調輕鬆' : '慢慢使用'));
   $('hero-mood').textContent = rawLeft < 0
     ? '仍然同行'
-    : (dayActive(todayKey()) ? '節奏穩定' : '準備出發');
+    : (dayHasMoneyActivity(todayKey()) ? '節奏穩定' : '準備出發');
   // 魔王
   const dmg = bossDamage(), max = bossMaxHp();
   const hp = Math.max(0, max - dmg);
@@ -1017,11 +1088,11 @@ function renderHome() {
   // 護甲
   const ai = armorInfo();
   $('armor-line').innerHTML = S.finProfile
-    ? `護甲：<b>${ai.name}</b>（存款夠用 ${ai.months.toFixed(1)} 個月）${ai.next ? `<span class="armor-next">${ai.next}</span>` : ''}`
+    ? `護甲：<b>${ai.name}</b>（估算可應付 ${ai.months.toFixed(1)} 個月日常使費）${ai.next ? `<span class="armor-next">${ai.next}</span>` : ''}`
     : '';
-  $('wellbeing-control').textContent = meta(todayKey()).noSpend
-    ? '零消費已確認'
-    : (logsToday() ? `${logsToday()} 筆已看見` : '等待第一步');
+  $('wellbeing-control').textContent = meta(todayKey()).reviewed
+    ? '今日已盤點'
+    : (meta(todayKey()).noSpend ? '零消費已確認' : (dayHasMoneyActivity(todayKey()) ? `${moneyActivityCount(todayKey())} 個足印已看見` : '等待第一步'));
   $('wellbeing-resilience').textContent = `${ai.months.toFixed(1)} 個月`;
   $('wellbeing-goal').textContent = `${Math.round((dmg / max) * 100)}%`;
   $('wellbeing-freedom').textContent = fmt(left);
@@ -1052,7 +1123,7 @@ function renderQuests() {
     const p = questProgress(q);
     const claimed = m.questsClaimed.includes(q.id);
     const done = p >= q.target;
-    return `<div class="quest${done ? ' done' : ''}">
+    return `<div class="quest${done ? ' done' : ''}" data-quest-id="${q.id}">
       <div class="q-info">
         <div class="q-outcome">${q.outcome}</div>
         <div class="q-name">${q.name}</div>
@@ -1166,6 +1237,7 @@ function renderStats() {
     ...S.expenses.map((entry) => ({ ...entry, entryType: 'expense' })),
     ...(S.incomes || []).map((entry) => ({ ...entry, entryType: 'income' })),
     ...(S.cardPayments || []).map((entry) => ({ ...entry, entryType: 'card_payment' })),
+    ...(S.repayments || []).map((entry) => ({ ...entry, dateKey: keyOf(new Date(entry.ts)), entryType: 'debt_payment' })),
   ].sort((a, b) => b.ts - a.ts).slice(0, 10);
   $('recent-logs').innerHTML = recent.length
     ? recent.map((entry) => entry.entryType === 'income'
@@ -1177,6 +1249,11 @@ function renderStats() {
       ? `<div class="log-row">
         <div><span class="lr-cat">${escapeHtml((S.creditCards.find((card) => card.id === entry.cardId) || { name: '信用卡' }).name)} 還款</span><span class="lr-date">${entry.dateKey.slice(5)}</span><span class="intent-tag transfer-tag">還款轉移</span></div>
         <div class="log-amount"><span class="lr-amt transfer">${fmt(entry.amount)}</span><button class="icon-btn log-delete" data-del-card-payment="${escapeHtml(entry.id)}" aria-label="刪除呢筆還款" title="刪除"><span class="icon" data-icon="trash"></span></button></div>
+      </div>`
+      : entry.entryType === 'debt_payment'
+      ? `<div class="log-row">
+        <div><span class="lr-cat">${escapeHtml((S.debts.find((debt) => debt.id === entry.debtId) || { name: '債務' }).name)} 還款</span><span class="lr-date">${entry.dateKey.slice(5)}</span><span class="intent-tag transfer-tag">斬龍還款</span></div>
+        <div class="log-amount"><span class="lr-amt transfer">${fmt(entry.amount)}</span><button class="icon-btn log-delete" data-del-debt-payment="${entry.id}" aria-label="刪除呢筆債務還款" title="刪除"><span class="icon" data-icon="trash"></span></button></div>
       </div>`
       : `<div class="log-row">
         <div><span class="lr-cat">${(CATS.find((c) => c.id === entry.cat) || { name: '其他' }).name}</span><span class="lr-date">${entry.dateKey.slice(5)}</span>${expenseBudgetImpact(entry) === 'committed' ? '<span class="intent-tag committed-tag">固定／預留</span>' : (entry.intent ? `<span class="intent-tag">${(INTENTS.find((item) => item.id === entry.intent) || { name: '消費' }).name}</span>` : '')}</div>
@@ -1194,6 +1271,7 @@ function renderStats() {
       cancelLabel: '保持原狀',
       onConfirm: () => {
         expense.budgetImpact = next;
+        invalidateReview(expense.dateKey);
         save(); renderAll();
         toast(next === 'committed' ? '已改為固定／預留支出' : '已改為日常支出');
       },
@@ -1220,6 +1298,7 @@ function renderStats() {
           if (card) card.currentBalance = Math.max(0, Number(card.currentBalance || 0) - Number(expense.amount || 0));
         }
         S.expenses = S.expenses.filter((entry) => entry.id !== expense.id);
+        invalidateReview(expense.dateKey);
         save(); renderAll();
         toast('紀錄已刪除，相關結欠同任務進度已同步');
       },
@@ -1233,6 +1312,7 @@ function renderStats() {
       cancelLabel: '保留紀錄',
       onConfirm: () => {
         S.incomes = S.incomes.filter((entry) => entry.id !== income.id);
+        invalidateReview(income.dateKey);
         save(); renderAll();
         toast('收入紀錄已刪除');
       },
@@ -1248,8 +1328,26 @@ function renderStats() {
       onConfirm: () => {
         if (card) card.currentBalance = Number(card.currentBalance || 0) + Number(payment.amount || 0);
         S.cardPayments = S.cardPayments.filter((entry) => entry.id !== payment.id);
+        invalidateReview(payment.dateKey);
         save(); renderAll();
         toast('還款紀錄已刪除，卡片結欠已同步');
+      },
+    });
+  }));
+  $('recent-logs').querySelectorAll('[data-del-debt-payment]').forEach((button) => (button.onclick = () => {
+    const payment = S.repayments.find((entry) => entry.id === Number(button.dataset.delDebtPayment));
+    if (!payment) return;
+    const debt = S.debts.find((entry) => entry.id === payment.debtId);
+    const paymentDate = keyOf(new Date(payment.ts));
+    popup('刪除呢筆債務還款？', `<p class="confirm-copy"><b>${escapeHtml(debt ? debt.name : '債務')} ${fmt(payment.amount)}</b><br>刪除後會將金額加回債務結欠，但唔會當成新支出。</p>`, {
+      confirmLabel: '確認刪除',
+      cancelLabel: '保留紀錄',
+      onConfirm: () => {
+        if (debt) debt.balance = Math.min(Number(debt.orig || Infinity), Number(debt.balance || 0) + Number(payment.amount || 0));
+        S.repayments = S.repayments.filter((entry) => entry.id !== payment.id);
+        invalidateReview(paymentDate);
+        save(); renderAll();
+        toast('債務還款已刪除，惡龍結欠已同步');
       },
     });
   }));
@@ -1257,6 +1355,53 @@ function renderStats() {
 
 function closeCardForm() {
   $('card-form-mask').classList.add('hidden');
+}
+
+function closeCardPaymentForm() {
+  $('card-payment-mask').classList.add('hidden');
+}
+
+function openCardPaymentForm(cardId) {
+  const card = S.creditCards.find((item) => item.id === cardId);
+  if (!card || !(Number(card.currentBalance || 0) > 0)) {
+    toast('呢張卡暫時冇已記結欠');
+    return;
+  }
+  const balance = Math.round((Number(card.currentBalance || 0) + Number.EPSILON) * 100) / 100;
+  $('card-payment-form').reset();
+  $('card-payment-id').value = card.id;
+  $('card-payment-title').textContent = `${card.name} 還款`;
+  $('card-payment-balance').textContent = fmt(balance);
+  $('card-payment-amount').max = String(balance);
+  $('card-payment-date').value = todayKey();
+  $('card-payment-date').max = todayKey();
+  $('card-payment-mask').classList.remove('hidden');
+  setTimeout(() => $('card-payment-amount').focus(), 80);
+}
+
+function saveCardPaymentForm(event) {
+  event.preventDefault();
+  const card = S.creditCards.find((item) => item.id === $('card-payment-id').value);
+  const amount = Math.round((Number($('card-payment-amount').value) + Number.EPSILON) * 100) / 100;
+  const dateKey = $('card-payment-date').value;
+  const balance = card ? Number(card.currentBalance || 0) : 0;
+  if (!card || !(amount > 0) || amount > balance || !/^\d{4}-\d{2}-\d{2}$/.test(dateKey) || dateKey > todayKey()) {
+    toast('請檢查還款金額同日期');
+    return;
+  }
+  card.currentBalance = Math.round((Math.max(0, balance - amount) + Number.EPSILON) * 100) / 100;
+  S.cardPayments.push({ id: `cardpay-${Date.now()}-${Math.floor(Math.random() * 10000)}`, cardId: card.id, amount, dateKey, ts: Date.now() });
+  if (dateKey === todayKey()) {
+    invalidateReview(dateKey);
+    touchStreak();
+  }
+  gainGold(15);
+  gainXp(20);
+  save();
+  closeCardPaymentForm();
+  renderAll();
+  softVibrate([8, 25, 8]);
+  toast(`${card.name} 已還 ${fmt(amount)} · +15G · +20 XP`);
 }
 
 function openCardForm(cardId) {
@@ -1323,9 +1468,15 @@ function renderAll() {
 }
 
 /* ===================== 導覽 ===================== */
+const screenScroll = { home: 0, quests: 0, shop: 0, stats: 0 };
+let activeScreenName = 'home';
 function switchScreen(name) {
+  if (!Object.prototype.hasOwnProperty.call(screenScroll, name)) return;
+  screenScroll[activeScreenName] = window.scrollY;
   document.querySelectorAll('.screen').forEach((s) => s.classList.toggle('active', s.id === `screen-${name}`));
   document.querySelectorAll('.tab').forEach((t) => t.classList.toggle('active', t.dataset.screen === name));
+  activeScreenName = name;
+  requestAnimationFrame(() => window.scrollTo(0, screenScroll[name] || 0));
 }
 
 /* ===================== 新手設定（財務問卷 wizard） ===================== */
@@ -1605,6 +1756,10 @@ function init() {
   $('card-form-close').onclick = closeCardForm;
   $('card-form-cancel').onclick = closeCardForm;
   $('card-form-mask').onclick = (event) => { if (event.target === $('card-form-mask')) closeCardForm(); };
+  $('card-payment-form').onsubmit = saveCardPaymentForm;
+  $('card-payment-close').onclick = closeCardPaymentForm;
+  $('card-payment-cancel').onclick = closeCardPaymentForm;
+  $('card-payment-mask').onclick = (event) => { if (event.target === $('card-payment-mask')) closeCardPaymentForm(); };
   $('btn-nospend').onclick = markNoSpend;
   $('log-mask').onclick = (e) => { if (e.target === $('log-mask')) closeLogSheet(); };
   $('chest-img').onclick = openChest;
@@ -1616,14 +1771,16 @@ function init() {
   FinanceAdvisor.init({
     getState: () => S,
     recordExpense: logExpense,
-    commit: () => { save(); renderAll(); },
+    commit: () => { if (dayHasMoneyActivity(todayKey())) touchStreak(); save(); renderAll(); },
     reward: (gold, xp) => { gainGold(gold); gainXp(xp); },
+    invalidateReview: () => invalidateReview(todayKey()),
     toast,
     vibrate: softVibrate,
     today: todayKey,
     month: monthKey,
     initIcons,
     openCardForm,
+    openCardPaymentForm,
     speak: (speaker, text) => { switchScreen('home'); speak(speaker, text, sceneChoices(buildObjective())); },
   });
   initOnboard();

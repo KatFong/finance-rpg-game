@@ -584,6 +584,11 @@ body[data-period="night"] .scene-sky {
 .account-form-grid input:focus { border-color: var(--leaf-deep); }
 .form-sheet-actions { display: grid; grid-template-columns: 1fr 1.4fr; gap: 8px; padding: 0 2px 2px; }
 .form-sheet-actions .btn { width: 100%; }
+.payment-balance { display: flex; align-items: baseline; justify-content: space-between; gap: 14px; margin-top: 13px; padding: 12px; border-left: 4px solid var(--sky-deep); background: #eff8fa; }
+.payment-balance span { color: var(--dim); font-size: 10px; font-weight: 800; }
+.payment-balance b { color: var(--ink); font-size: 17px; }
+.payment-form-grid { padding-bottom: 8px; }
+.form-note { margin: 0 2px 13px; color: var(--dim); font-size: 10px; line-height: 1.5; }
 
 .quick-log { margin: -3px 0 13px; padding-bottom: 12px; border-bottom: 1px solid var(--line); }
 .quick-log-head { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 7px; }
@@ -713,6 +718,11 @@ body[data-period="night"] .scene-sky {
 .modal-actions .btn:only-child, .modal-actions .btn.hidden + .btn { grid-column: 1 / -1; }
 .confirm-copy { color: var(--dim); font-size: 13px; line-height: 1.65; }
 .confirm-copy b { color: var(--ink); }
+.review-summary { width: 100%; color: var(--dim); font-size: 12px; text-align: left; }
+.review-summary > p { margin-bottom: 10px; line-height: 1.55; }
+.review-summary > div { display: flex; align-items: center; justify-content: space-between; gap: 14px; min-height: 37px; border-top: 1px solid var(--line); }
+.review-summary b { color: var(--ink); font-size: 13px; }
+.review-summary b.positive { color: var(--leaf-deep); }
 .chest-img { width: 142px; height: 142px; object-fit: contain; cursor: pointer; }
 .chest-img.shake { animation: shake 1.05s infinite; }
 @keyframes shake { 0%, 100% { transform: rotate(0); } 20% { transform: rotate(-6deg) scale(1.02); } 40% { transform: rotate(5deg); } 60% { transform: rotate(-4deg) scale(1.04); } 80% { transform: rotate(3deg); } }
@@ -732,6 +742,8 @@ body[data-period="night"] .scene-sky {
   border-radius: 50%;
   background: #e5f3ec url("assets/coin.png") center / 36px 36px no-repeat;
 }
+.quest[data-quest-id="q_checkin"]::before { background-image: url("assets/flame.png"); }
+.quest[data-quest-id="q_review"]::before { background-image: url("assets/shield.png"); }
 .quest.done::before { background-color: #fff0b9; }
 .quest .q-info { flex: 1; min-width: 0; }
 .quest .q-name { color: var(--ink); font-size: 13px; font-weight: 900; }
@@ -803,6 +815,7 @@ body[data-period="night"] .scene-sky {
 .credit-util > div { grid-column: 1 / -1; height: 7px; overflow: hidden; border-radius: 5px; background: #e0ebe8; }
 .credit-util i { display: block; height: 100%; border-radius: inherit; background: var(--coral); }
 .credit-rate-warning { display: block; margin-top: 8px; padding: 7px 8px; border-left: 3px solid var(--coral); background: #fff3ef; color: #a24d43; font-size: 10px; font-weight: 800; }
+.credit-pay-btn { width: 100%; margin-top: 10px; }
 .installment-list { margin-top: 10px; }
 .installment-row { padding: 10px 0; border-top: 1px solid var(--line); }
 .installment-head { display: flex; justify-content: space-between; align-items: baseline; gap: 9px; }

@@ -516,10 +516,12 @@
     let confirmation;
     if (draft.kind === 'income') {
       state.incomes = state.incomes || [];
+      const incomeDate = draft.date || bridge.today();
       state.incomes.push({
         id: makeId('income'), amount: roundMoney(draft.amount),
-        dateKey: draft.date || bridge.today(), source: draft.merchant || '收入', ts: Date.now(),
+        dateKey: incomeDate, source: draft.merchant || '收入', ts: Date.now(),
       });
+      if (incomeDate === bridge.today()) bridge.invalidateReview();
       bridge.reward(10, 15);
       bridge.commit();
       confirmation = `${fmt(draft.amount)} 收入已經寫入冒險手帳。`;
@@ -570,8 +572,10 @@
         return;
       }
       const amount = roundMoney(draft.amount);
+      const paymentDate = draft.date || bridge.today();
       card.currentBalance = roundMoney(Math.max(0, Number(card.currentBalance || 0) - amount));
-      state.cardPayments.push({ id: makeId('cardpay'), cardId: card.id, amount, dateKey: draft.date || bridge.today(), ts: Date.now() });
+      state.cardPayments.push({ id: makeId('cardpay'), cardId: card.id, amount, dateKey: paymentDate, ts: Date.now() });
+      if (paymentDate === bridge.today()) bridge.invalidateReview();
       bridge.reward(15, 20);
       bridge.commit();
       confirmation = `${card.name} 已還 ${fmt(amount)}；呢筆係減債，冇當成新消費。`;
@@ -770,7 +774,7 @@
       const actionLabel = nextPriority.kind === 'installment' ? '查看分期' : '記還款';
       priority.innerHTML = `<div><span>${days === 0 ? '今日要處理' : `最近行動 · ${days} 日後`}</span><b>${escapeHtml(nextPriority.title)}</b><p>${shortDate(nextPriority.date)} · ${nextPriority.amountLabel} ${fmt(nextPriority.amount)}</p></div><button class="btn small primary" id="credit-priority-action">${actionLabel}</button>`;
       $('credit-priority-action').onclick = () => {
-        if (nextPriority.kind === 'card') open(nextPriority.prompt);
+        if (nextPriority.kind === 'card') bridge.openCardPaymentForm(nextPriority.cardId);
         else {
           const target = document.getElementById(`credit-card-${nextPriority.cardId}`);
           if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -814,11 +818,13 @@
         <div class="credit-metrics"><div><span>卡片＋分期結欠</span><b>${fmt(outstanding)}</b></div><div><span>年利率 APR</span><b>${card.annualRate == null ? '未知' : `${card.annualRate}%`}</b></div><div><span>每月截數／還款</span><b>${card.statementDay || '?'} 日／${card.dueDay || '?'} 日</b></div></div>
         ${rateWarning}
         ${card.creditLimit ? `<div class="credit-util"><span>額度使用</span><b>${Math.round(utilization)}%</b><div><i style="width:${utilization}%"></i></div></div>` : ''}
+        ${Number(card.currentBalance || 0) > 0 ? `<button class="btn small primary credit-pay-btn" data-card-pay="${escapeHtml(card.id)}">記還款</button>` : ''}
         <div class="installment-list">${planRows}</div>
       </article>`;
     }).join('');
     if (bridge.initIcons) bridge.initIcons(list);
     list.querySelectorAll('[data-pay-plan]').forEach((button) => (button.onclick = () => markNextPayment(button.dataset.payPlan)));
+    list.querySelectorAll('[data-card-pay]').forEach((button) => (button.onclick = () => bridge.openCardPaymentForm(button.dataset.cardPay)));
     list.querySelectorAll('[data-card-edit]').forEach((button) => {
       button.onclick = () => bridge.openCardForm(button.dataset.cardEdit);
     });
