@@ -9,7 +9,7 @@
 <title>理財勇者</title>
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="assets/hero.png">
-<link rel="stylesheet" href="style.css?v=18">
+<link rel="stylesheet" href="style.css?v=19">
 </head>
 <body>
 
@@ -143,7 +143,7 @@
     </div>
   </section>
   <section class="stats-view" id="stats-cards" data-stats-panel="cards">
-    <div class="section-line"><h3 class="sec-sub">信用卡迷宮</h3><button class="btn small ghost" id="btn-card-advisor"><span class="icon" data-icon="chat"></span>找軍師</button></div>
+    <div class="section-line"><h3 class="sec-sub">信用卡迷宮</h3><button class="btn small primary" id="btn-card-add"><span class="icon" data-icon="plus"></span>新增信用卡</button></div>
     <div class="credit-priority" id="credit-priority"></div>
     <div class="stat-summary three" id="credit-summary"></div>
     <div id="credit-list" class="credit-list"></div>
@@ -158,7 +158,7 @@
 <nav id="tabbar">
   <button class="tab active" data-screen="home"><span class="icon" data-icon="swords"></span>今日</button>
   <button class="tab" data-screen="quests"><span class="icon" data-icon="scroll"></span>任務</button>
-  <button id="tab-log" aria-label="對話或語音記帳"><span class="icon" data-icon="mic"></span><span>記帳</span></button>
+  <button id="tab-log" aria-label="跟錢錢軍師聊聊"><span class="icon" data-icon="chat"></span><span>軍師</span></button>
   <button class="tab" data-screen="shop"><span class="icon" data-icon="bag"></span>裝備</button>
   <button class="tab" data-screen="stats"><span class="icon" data-icon="chart"></span>手帳</button>
 </nav>
@@ -182,6 +182,31 @@
   </div>
 </div>
 
+<!-- ===== 信用卡表格 ===== -->
+<div class="sheet-mask hidden" id="card-form-mask">
+  <form class="sheet account-sheet" id="card-form" role="dialog" aria-labelledby="card-form-title">
+    <div class="sheet-handle"></div>
+    <div class="form-sheet-head">
+      <div><span>信用卡迷宮</span><h3 id="card-form-title">新增信用卡</h3></div>
+      <button class="icon-btn" id="card-form-close" type="button" aria-label="關閉信用卡表格" title="關閉"><span class="icon" data-icon="close"></span></button>
+    </div>
+    <input id="card-form-id" type="hidden">
+    <div class="account-form-grid">
+      <label class="full"><span>卡片名稱</span><input id="card-name" maxlength="24" placeholder="例如：恒生 Visa" required></label>
+      <label><span>卡號尾數 <small>選填</small></span><input id="card-last4" inputmode="numeric" maxlength="4" placeholder="1234"></label>
+      <label><span>信用額 <small>選填</small></span><input id="card-limit" type="number" inputmode="decimal" min="0" placeholder="20000"></label>
+      <label class="full"><span>目前結欠</span><input id="card-balance" type="number" inputmode="decimal" min="0" step="0.01" placeholder="冇結欠請填 0" required></label>
+      <label><span>每月截數日</span><input id="card-statement-day" type="number" inputmode="numeric" min="1" max="31" placeholder="5" required></label>
+      <label><span>每月還款日</span><input id="card-due-day" type="number" inputmode="numeric" min="1" max="31" placeholder="25" required></label>
+      <label class="full"><span>年利率 APR <small>未知可留空</small></span><input id="card-apr" type="number" inputmode="decimal" min="0" step="0.01" placeholder="例如 35"></label>
+    </div>
+    <div class="form-sheet-actions">
+      <button class="btn ghost" id="card-form-cancel" type="button">取消</button>
+      <button class="btn primary" type="submit">儲存信用卡</button>
+    </div>
+  </form>
+</div>
+
 <!-- ===== 軍師 AI 對話 ===== -->
 <div class="sheet-mask hidden" id="advisor-mask">
   <div class="sheet advisor-sheet" id="advisor-sheet" role="dialog" aria-labelledby="advisor-title">
@@ -194,14 +219,15 @@
     <div class="advisor-messages" id="advisor-messages" aria-live="polite"></div>
     <div class="advisor-thinking hidden" id="advisor-thinking"><i></i><i></i><i></i><span>軍師整理中</span></div>
     <div class="advisor-prompts">
-      <button data-advisor-prompt="我想記一筆支出">記眼前一筆</button>
-      <button data-advisor-prompt="我想更新信用卡資料">更新信用卡</button>
-      <button data-advisor-prompt="我想記錄一個分期計劃">新增分期</button>
+      <button data-advisor-prompt="我想記一筆支出">記支出</button>
+      <button data-advisor-prompt="我想記一筆收入">記收入</button>
+      <button data-advisor-prompt="我想新增一張信用卡">新增信用卡</button>
+      <button data-advisor-prompt="我想問一個理財問題">問理財</button>
     </div>
     <div class="advisor-draft hidden" id="advisor-draft"></div>
     <div class="advisor-composer">
       <button class="icon-btn mic-btn" id="advisor-mic" aria-label="開始語音輸入" title="語音輸入"><span class="icon" data-icon="mic"></span></button>
-      <textarea id="advisor-input" rows="1" maxlength="1200" placeholder="例：啱啱超市 $248，用恒生卡"></textarea>
+      <textarea id="advisor-input" rows="1" maxlength="1200" placeholder="記帳、記收入，或者問理財問題…"></textarea>
       <button class="icon-btn send-btn" id="advisor-send" aria-label="傳送訊息" title="傳送"><span class="icon" data-icon="send"></span></button>
     </div>
   </div>
@@ -346,7 +372,7 @@
 <div id="toast" class="hidden"></div>
 
 <script>window.FRPG_CONFIG = { advisorApiUrl: '' };</script>
-<script src="advisor.js?v=18"></script>
-<script src="app.js?v=18"></script>
+<script src="advisor.js?v=19"></script>
+<script src="app.js?v=19"></script>
 </body>
 </html>

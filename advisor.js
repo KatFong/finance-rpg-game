@@ -170,6 +170,7 @@
       /(?:HKD|HK\$|\$)\s*([\d,]+(?:\.\d+)?)/i,
       /([\d,]+(?:\.\d+)?)\s*(?:蚊|元|港幣)/,
       /(?:金額|本金|使咗|用咗|消費)\s*[:：]?\s*([\d,]+(?:\.\d+)?)/,
+      /(?:收入|人工|薪金|出糧|佣金|花紅|獎金|退款|收咗|收到)\s*[:：]?\s*([\d,]+(?:\.\d+)?)/,
     ];
     for (const pattern of patterns) {
       const match = text.match(pattern);
@@ -294,6 +295,32 @@
       return result;
     }
 
+    const isIncome = /收入|人工|出糧|薪金|糧|佣金|花紅|獎金|兼職|freelance|退款|收到|收咗/i.test(combined);
+    if (isIncome) {
+      const result = emptyResult('');
+      if (!amount) {
+        result.status = 'clarify';
+        result.question = '收到幾多？我唔會估收入金額。';
+        result.reply = result.question;
+        result.missingFields = ['金額'];
+        return result;
+      }
+      const source = last
+        .replace(/(?:HKD|HK\$|\$)?\s*[\d,]+(?:\.\d+)?\s*(?:蚊|元|港幣)?/gi, '')
+        .replace(/我想|幫我|記錄|記一筆|記低|收入|收到|收咗/g, '').trim();
+      result.status = 'draft';
+      result.confidence = 0.9;
+      result.reply = '我整理成一筆收入卷軸。確認後會寫入冒險手帳。';
+      result.draft = Object.assign(result.draft, {
+        kind: 'income', amount, date: today, merchant: source || '收入',
+      });
+      return result;
+    }
+
+    if (/投資|股票|ETF|基金|債券|儲蓄|應急|退休|風險|理財/i.test(combined)) {
+      return emptyResult('可以。我會先了解你嘅目標、時間同可承受風險，再提供一般理財教育資訊，唔會代你揀產品。你而家最想解決邊一件事？');
+    }
+
     if (amount || /記帳|支出|使咗|用咗|買咗/.test(combined)) {
       const result = emptyResult('');
       if (!amount) {
@@ -315,7 +342,7 @@
       return result;
     }
 
-    return emptyResult('我喺度。今次想整理一筆支出、信用卡入口，定係一條分期任務線？');
+    return emptyResult('我喺度。你可以記支出、收入、信用卡或分期，亦可以直接問我理財問題。');
   }
 
   function normalizeResult(result) {
@@ -357,6 +384,15 @@
   }
 
   function draftSummary(draft) {
+    if (draft.kind === 'income') {
+      return {
+        title: '收入卷軸',
+        lines: [
+          ['金額', fmt(draft.amount)], ['來源', draft.merchant || '收入'],
+          ['日期', draft.date || bridge.today()], ['記帳方式', '加入收入，不扣預算'],
+        ],
+      };
+    }
     if (draft.kind === 'expense') {
       const card = (bridge.getState().creditCards || []).find((item) => item.id === draft.cardId);
       return {
@@ -460,7 +496,16 @@
     const draft = activeDraft;
     const state = bridge.getState();
     let confirmation;
-    if (draft.kind === 'expense') {
+    if (draft.kind === 'income') {
+      state.incomes = state.incomes || [];
+      state.incomes.push({
+        id: makeId('income'), amount: roundMoney(draft.amount),
+        dateKey: draft.date || bridge.today(), source: draft.merchant || '收入', ts: Date.now(),
+      });
+      bridge.reward(10, 15);
+      bridge.commit();
+      confirmation = `${fmt(draft.amount)} 收入已經寫入冒險手帳。`;
+    } else if (draft.kind === 'expense') {
       const recorded = bridge.recordExpense(draft.category || 'other', Number(draft.amount), {
         dateKey: draft.date || bridge.today(), merchant: draft.merchant || null,
         cardId: draft.cardId || null, intent: draft.intent || null,
@@ -606,14 +651,14 @@
     recognition.onend = () => {
       listening = false;
       mic.classList.remove('listening');
-      $('advisor-input').placeholder = '例：啱啱超市 $248，用恒生卡';
+      $('advisor-input').placeholder = '記帳、記收入，或者問理財問題…';
       $('advisor-input').focus();
     };
   }
 
   function open(prompt) {
     $('advisor-mask').classList.remove('hidden');
-    if (!messages.length) addMessage('assistant', '直接講發生咗咩就得，例如「啱啱超市 $248，用恒生卡」。資料唔齊我會逐樣問清楚，俾你確認後先正式記錄。');
+    if (!messages.length) addMessage('assistant', '我喺度。你可以記支出、收入、信用卡或分期，亦可以直接問我理財問題。資料未齊我會逐樣問，任何紀錄都要你確認先會寫入。');
     renderMessages();
     if (prompt) submitMessage(prompt);
     else $('advisor-input').focus();
@@ -672,6 +717,9 @@
       if (!next) return;
       const card = cards.find((item) => item.id === plan.cardId);
       priorities.push({
+        kind: 'installment',
+        planId: plan.id,
+        cardId: plan.cardId,
         date: next.dueDate,
         amount: next.amount,
         amountLabel: '本期供款',
@@ -684,6 +732,8 @@
       const date = nextMonthlyDate(card.dueDay, today);
       if (!date) return;
       priorities.push({
+        kind: 'card',
+        cardId: card.id,
         date,
         amount: card.currentBalance,
         amountLabel: '目前結欠',
@@ -695,24 +745,30 @@
     const nextPriority = priorities[0];
     if (!cards.length) {
       priority.className = 'credit-priority needs-info';
-      priority.innerHTML = '<div><span>尚未設定</span><b>先建立第一個信用卡入口</b><p>軍師會逐項問清楚結欠、截數日、還款日同利率。</p></div><button class="btn small primary" id="credit-priority-action">開始整理</button>';
-      $('credit-priority-action').onclick = () => open('我想新增一張信用卡');
+      priority.innerHTML = '<div><span>尚未設定</span><b>先建立第一個信用卡入口</b><p>用上方「新增信用卡」填寫結欠、截數日、還款日同利率。</p></div>';
     } else if (nextPriority) {
       const days = daysUntil(nextPriority.date, today);
       priority.className = `credit-priority${days <= 7 ? ' urgent' : ''}`;
-      priority.innerHTML = `<div><span>${days === 0 ? '今日要處理' : `最近行動 · ${days} 日後`}</span><b>${escapeHtml(nextPriority.title)}</b><p>${shortDate(nextPriority.date)} · ${nextPriority.amountLabel} ${fmt(nextPriority.amount)}</p></div><button class="btn small primary" id="credit-priority-action">同軍師處理</button>`;
-      $('credit-priority-action').onclick = () => open(nextPriority.prompt);
+      const actionLabel = nextPriority.kind === 'installment' ? '查看分期' : '記還款';
+      priority.innerHTML = `<div><span>${days === 0 ? '今日要處理' : `最近行動 · ${days} 日後`}</span><b>${escapeHtml(nextPriority.title)}</b><p>${shortDate(nextPriority.date)} · ${nextPriority.amountLabel} ${fmt(nextPriority.amount)}</p></div><button class="btn small primary" id="credit-priority-action">${actionLabel}</button>`;
+      $('credit-priority-action').onclick = () => {
+        if (nextPriority.kind === 'card') open(nextPriority.prompt);
+        else {
+          const target = document.getElementById(`credit-card-${nextPriority.cardId}`);
+          if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+      };
     } else if (cards.some((card) => !card.dueDay)) {
+      const incomplete = cards.find((card) => !card.dueDay);
       priority.className = 'credit-priority needs-info';
-      priority.innerHTML = '<div><span>資料缺口</span><b>補上每張卡嘅還款日</b><p>軍師會逐項問，唔使一次過記得晒。</p></div><button class="btn small ghost" id="credit-priority-action">補資料</button>';
-      $('credit-priority-action').onclick = () => open('幫我補齊信用卡還款日');
+      priority.innerHTML = '<div><span>資料缺口</span><b>補上每張卡嘅還款日</b><p>完整資料先可以準確安排下一步。</p></div><button class="btn small ghost" id="credit-priority-action">補資料</button>';
+      $('credit-priority-action').onclick = () => bridge.openCardForm(incomplete.id);
     } else {
       priority.className = 'credit-priority clear';
-      priority.innerHTML = '<div><span>眼前安全</span><b>暫時冇待處理供款</b><p>有新卡數或分期時，直接同軍師講。</p></div>';
+      priority.innerHTML = '<div><span>眼前安全</span><b>暫時冇待處理供款</b><p>目前所有已記錄項目都已處理。</p></div>';
     }
     if (!cards.length) {
-      list.innerHTML = '<div class="credit-empty"><b>未有信用卡迷宮</b><p>軍師可以用對話逐項整理帳戶同分期資料。</p><button class="btn small primary" id="credit-empty-add">召喚軍師</button></div>';
-      $('credit-empty-add').onclick = () => open('我想新增一張信用卡');
+      list.innerHTML = '<div class="credit-empty"><b>未有信用卡迷宮</b><p>按上方「新增信用卡」填表；亦可以由底部軍師入口用對話輸入。</p></div>';
       return;
     }
     list.innerHTML = cards.map((card) => {
@@ -734,8 +790,8 @@
           ${next ? `<button class="btn small ghost" data-pay-plan="${escapeHtml(plan.id)}">繳付本期</button>` : '<span class="plan-cleared">全數通關</span>'}
         </div>`;
       }).join('') : '<p class="credit-no-plan">未有分期任務。</p>';
-      return `<article class="credit-card-item">
-        <div class="credit-card-head"><div><span>信用卡迷宮</span><h4>${escapeHtml(card.name)} ${card.last4 ? `•••• ${escapeHtml(card.last4)}` : ''}</h4></div><button class="icon-btn" data-card-chat="${escapeHtml(card.id)}" aria-label="同軍師處理${escapeHtml(card.name)}" title="同軍師處理"><span class="icon" data-icon="chat"></span></button></div>
+      return `<article class="credit-card-item" id="credit-card-${escapeHtml(card.id)}">
+        <div class="credit-card-head"><div><span>信用卡迷宮</span><h4>${escapeHtml(card.name)} ${card.last4 ? `•••• ${escapeHtml(card.last4)}` : ''}</h4></div><button class="icon-btn" data-card-edit="${escapeHtml(card.id)}" aria-label="編輯${escapeHtml(card.name)}" title="編輯信用卡"><span class="icon" data-icon="edit"></span></button></div>
         <div class="credit-next${nextDays != null && nextDays <= 7 ? ' urgent' : ''}"><span>下一步</span><b>${nextDate ? `${shortDate(nextDate)} · ${nextDays === 0 ? '今日' : `${nextDays} 日後`}` : '補上還款日'}</b></div>
         <div class="credit-metrics"><div><span>卡片＋分期結欠</span><b>${fmt(outstanding)}</b></div><div><span>年利率 APR</span><b>${card.annualRate == null ? '未知' : `${card.annualRate}%`}</b></div><div><span>每月截數／還款</span><b>${card.statementDay || '?'} 日／${card.dueDay || '?'} 日</b></div></div>
         ${rateWarning}
@@ -745,11 +801,8 @@
     }).join('');
     if (bridge.initIcons) bridge.initIcons(list);
     list.querySelectorAll('[data-pay-plan]').forEach((button) => (button.onclick = () => markNextPayment(button.dataset.payPlan)));
-    list.querySelectorAll('[data-card-chat]').forEach((button) => {
-      button.onclick = () => {
-        const card = cards.find((item) => item.id === button.dataset.cardChat);
-        open(`我想處理 ${card.name} 嘅信用卡記錄`);
-      };
+    list.querySelectorAll('[data-card-edit]').forEach((button) => {
+      button.onclick = () => bridge.openCardForm(button.dataset.cardEdit);
     });
   }
 
@@ -767,7 +820,6 @@
     document.querySelectorAll('[data-advisor-prompt]').forEach((button) => {
       button.onclick = () => submitMessage(button.dataset.advisorPrompt);
     });
-    $('btn-card-advisor').onclick = () => open('我想新增一張信用卡');
     setupVoice();
     if (bridge.initIcons) bridge.initIcons($('advisor-sheet'));
   }

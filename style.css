@@ -572,6 +572,19 @@ body[data-period="night"] .scene-sky {
 .sheet-guide p { font-size: 11px; font-weight: 700; line-height: 1.4; }
 .sheet-title { margin: 11px 0 13px; color: var(--ink); text-align: center; font-size: 17px; }
 
+.account-sheet { width: min(100%, 560px); }
+.form-sheet-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 1px 2px 11px; border-bottom: 1px solid var(--line); }
+.form-sheet-head > div > span { color: var(--berry); font-size: 9px; font-weight: 900; }
+.form-sheet-head h3 { margin-top: 2px; color: var(--ink); font-size: 17px; }
+.account-form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 10px; padding: 14px 2px; }
+.account-form-grid label { min-width: 0; display: grid; gap: 5px; color: var(--ink-soft); font-size: 10px; font-weight: 900; }
+.account-form-grid label.full { grid-column: 1 / -1; }
+.account-form-grid small { color: var(--dim); font-size: 9px; }
+.account-form-grid input { width: 100%; min-width: 0; min-height: 46px; padding: 10px 11px; border: 1px solid #bfd4cf; border-bottom-width: 3px; border-radius: var(--radius); outline: 0; background: #fff; color: var(--ink); font-size: 14px; }
+.account-form-grid input:focus { border-color: var(--leaf-deep); }
+.form-sheet-actions { display: grid; grid-template-columns: 1fr 1.4fr; gap: 8px; padding: 0 2px 2px; }
+.form-sheet-actions .btn { width: 100%; }
+
 .quick-log { margin: -3px 0 13px; padding-bottom: 12px; border-bottom: 1px solid var(--line); }
 .quick-log-head { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 7px; }
 .quick-log-head b { color: var(--ink); font-size: 11px; }
@@ -649,7 +662,7 @@ body[data-period="night"] .scene-sky {
 .advisor-thinking i:nth-child(3) { animation-delay: .36s; }
 .advisor-thinking span { margin-left: 4px; }
 @keyframes thinking-dot { to { transform: translateY(-4px); opacity: .45; } }
-.advisor-prompts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; padding: 7px 2px; border-top: 1px solid var(--line); }
+.advisor-prompts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; padding: 7px 2px; border-top: 1px solid var(--line); }
 .advisor-prompts button { min-height: 44px; min-width: 0; padding: 7px 5px; border: 1px solid #bdd5ce; border-radius: var(--radius); background: #f5faf7; color: var(--ink-soft); font-size: 10px; font-weight: 900; cursor: pointer; }
 .advisor-draft { margin: 4px 2px 8px; padding: 10px; overflow-y: auto; border: 1px solid #e1bd5d; border-left-width: 4px; border-radius: var(--radius); background: #fffaf0; }
 .draft-head { display: flex; justify-content: space-between; gap: 8px; color: var(--ink); font-size: 11px; font-weight: 900; }
@@ -811,6 +824,8 @@ body[data-period="night"] .scene-sky {
 .lr-date { margin-left: 6px; color: var(--dim); font-size: 9px; }
 .intent-tag { display: inline-block; margin: 3px 0 0 6px; padding: 2px 5px; border-radius: 7px; background: #e7f2ec; color: var(--leaf-deep); font-size: 8px; font-weight: 900; }
 .lr-amt { color: var(--coral); font-weight: 900; }
+.lr-amt.income { color: var(--leaf-deep); }
+.income-tag { border-color: #9acbab; background: #e8f5eb; color: var(--leaf-deep); }
 
 /* ===== Conversational onboarding ===== */
 .welcome-mask { align-items: stretch; padding: 0; background: #315f68; backdrop-filter: none; }

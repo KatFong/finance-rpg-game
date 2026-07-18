@@ -45,6 +45,7 @@ const defaults = () => ({
   creditCards: [],         // {id, name, last4, creditLimit, currentBalance, statementDay, dueDay, annualRate}
   installments: [],        // {id, cardId, principal, termMonths, schedule:[]}
   cardPayments: [],        // {id, cardId, amount, dateKey, ts}
+  incomes: [],             // {id, ts, dateKey, source, amount}
   gold: 0, xp: 0, level: 1,
   streak: 0, lastLogDate: null,
   items: { sword: 0, charm: 0, shield: 0, cape: 0 },
@@ -204,6 +205,7 @@ const I = {
   close: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>`,
   card: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 10h18M7 15h3"/></svg>`,
   chat: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 12a8 8 0 01-8 8H5l-3 2 1-5a9 9 0 1118-5z"/><path d="M8 12h.01M12 12h.01M16 12h.01"/></svg>`,
+  edit: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4z"/></svg>`,
   trash: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7h16M9 7V4h6v3M7 7l1 13h8l1-13M10 11v5M14 11v5"/></svg>`,
   play: `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5.5v13a1 1 0 001.55.83l9-6.5a1 1 0 000-1.66l-9-6.5A1 1 0 008 5.5z"/></svg>`,
 };
@@ -216,6 +218,9 @@ function initIcons(root) {
 /* ===================== DOM helpers ===================== */
 const $ = (id) => document.getElementById(id);
 const fmt = (n) => '$' + Math.round(n).toLocaleString('en-US');
+const escapeHtml = (value) => String(value == null ? '' : value)
+  .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+  .replace(/"/g, '&quot;').replace(/'/g, '&#039;');
 function periodInfo() {
   const hour = new Date().getHours();
   if (hour < 6) return { id: 'night', label: '深夜', greeting: '夜深喇' };
@@ -290,7 +295,7 @@ function speak(speaker, text, choices, immediate) {
 function sceneChoices(objective) {
   return [
     { label: objective.label, primary: true, action: objective.action },
-    { label: '問軍師', action: showAdviceDialogue },
+    { label: '今日攻略', action: showAdviceDialogue },
   ];
 }
 
@@ -1066,6 +1071,8 @@ function renderStats() {
   const mk = monthKey();
   const monthExp = S.expenses.filter((e) => e.dateKey.startsWith(mk));
   const totalSpent = monthExp.reduce((s, e) => s + e.amount, 0);
+  const monthIncome = (S.incomes || []).filter((entry) => entry.dateKey.startsWith(mk));
+  const totalIncome = monthIncome.reduce((sum, entry) => sum + Number(entry.amount || 0), 0);
   let savedTotal = 0;
   const dayKeys = new Set(S.expenses.map((e) => e.dateKey));
   Object.keys(S.dayMeta).forEach((k) => { if (S.dayMeta[k].noSpend) dayKeys.add(k); });
@@ -1075,8 +1082,10 @@ function renderStats() {
     savedTotal += Math.max(0, dailyBudget() - daySpend(k));
   });
   $('stat-summary').innerHTML = `
+    <div class="stat-box"><div class="v">${fmt(totalIncome)}</div><div class="k">本月已記收入</div></div>
     <div class="stat-box"><div class="v">${fmt(totalSpent)}</div><div class="k">本月總開支</div></div>
-    <div class="stat-box"><div class="v">${fmt(savedTotal)}</div><div class="k">本月已儲（記帳日）</div></div>`;
+    <div class="stat-box"><div class="v">${fmt(savedTotal)}</div><div class="k">記帳日安心餘額</div></div>
+    <div class="stat-box"><div class="v" style="color:${totalIncome - totalSpent >= 0 ? 'var(--leaf-deep)' : 'var(--coral)'}">${fmt(totalIncome - totalSpent)}</div><div class="k">已記收支差</div></div>`;
   // 資產負債
   const fp = S.finProfile || { savings: 0 };
   const net = fp.savings - totalDebt();
@@ -1107,11 +1116,19 @@ function renderStats() {
       </div>`).join('')
     : '<p class="tip">本月未有紀錄。</p>';
   // 最近紀錄
-  const recent = [...S.expenses].sort((a, b) => b.ts - a.ts).slice(0, 10);
+  const recent = [
+    ...S.expenses.map((entry) => ({ ...entry, entryType: 'expense' })),
+    ...(S.incomes || []).map((entry) => ({ ...entry, entryType: 'income' })),
+  ].sort((a, b) => b.ts - a.ts).slice(0, 10);
   $('recent-logs').innerHTML = recent.length
-    ? recent.map((e) => `<div class="log-row">
-        <div><span class="lr-cat">${CATS.find((c) => c.id === e.cat).name}</span><span class="lr-date">${e.dateKey.slice(5)}</span>${e.intent ? `<span class="intent-tag">${INTENTS.find((item) => item.id === e.intent).name}</span>` : ''}</div>
-        <div class="log-amount"><span class="lr-amt">-${fmt(e.amount)}</span><button class="icon-btn log-delete" data-del="${e.id}" aria-label="刪除呢筆紀錄" title="刪除"><span class="icon" data-icon="trash"></span></button></div>
+    ? recent.map((entry) => entry.entryType === 'income'
+      ? `<div class="log-row">
+        <div><span class="lr-cat">${escapeHtml(entry.source || '收入')}</span><span class="lr-date">${entry.dateKey.slice(5)}</span><span class="intent-tag income-tag">收入</span></div>
+        <div class="log-amount"><span class="lr-amt income">+${fmt(entry.amount)}</span><button class="icon-btn log-delete" data-del-income="${escapeHtml(entry.id)}" aria-label="刪除呢筆收入" title="刪除"><span class="icon" data-icon="trash"></span></button></div>
+      </div>`
+      : `<div class="log-row">
+        <div><span class="lr-cat">${(CATS.find((c) => c.id === entry.cat) || { name: '其他' }).name}</span><span class="lr-date">${entry.dateKey.slice(5)}</span>${entry.intent ? `<span class="intent-tag">${(INTENTS.find((item) => item.id === entry.intent) || { name: '消費' }).name}</span>` : ''}</div>
+        <div class="log-amount"><span class="lr-amt">-${fmt(entry.amount)}</span><button class="icon-btn log-delete" data-del="${entry.id}" aria-label="刪除呢筆紀錄" title="刪除"><span class="icon" data-icon="trash"></span></button></div>
       </div>`).join('')
     : '<p class="tip">未有紀錄，去記低第一筆啦。</p>';
   initIcons($('recent-logs'));
@@ -1141,7 +1158,83 @@ function renderStats() {
       },
     });
   }));
+  $('recent-logs').querySelectorAll('[data-del-income]').forEach((button) => (button.onclick = () => {
+    const income = (S.incomes || []).find((entry) => entry.id === button.dataset.delIncome);
+    if (!income) return;
+    popup('刪除呢筆收入？', `<p class="confirm-copy"><b>${escapeHtml(income.source || '收入')} ${fmt(income.amount)}</b><br>刪除後會同步更新本月收支差。</p>`, {
+      confirmLabel: '確認刪除',
+      cancelLabel: '保留紀錄',
+      onConfirm: () => {
+        S.incomes = S.incomes.filter((entry) => entry.id !== income.id);
+        save(); renderAll();
+        toast('收入紀錄已刪除');
+      },
+    });
+  }));
 }
+
+function closeCardForm() {
+  $('card-form-mask').classList.add('hidden');
+}
+
+function openCardForm(cardId) {
+  const card = cardId ? S.creditCards.find((item) => item.id === cardId) : null;
+  $('card-form').reset();
+  $('card-form-id').value = card ? card.id : '';
+  $('card-form-title').textContent = card ? '編輯信用卡' : '新增信用卡';
+  if (card) {
+    $('card-name').value = card.name || '';
+    $('card-last4').value = card.last4 || '';
+    $('card-limit').value = card.creditLimit == null ? '' : card.creditLimit;
+    $('card-balance').value = Number(card.currentBalance || 0);
+    $('card-statement-day').value = card.statementDay || '';
+    $('card-due-day').value = card.dueDay || '';
+    $('card-apr').value = card.annualRate == null ? '' : card.annualRate;
+  }
+  switchScreen('stats');
+  switchStatsView('cards');
+  $('card-form-mask').classList.remove('hidden');
+  setTimeout(() => $('card-name').focus(), 80);
+}
+
+function saveCardForm(event) {
+  event.preventDefault();
+  const last4 = $('card-last4').value.trim();
+  if (last4 && !/^\d{4}$/.test(last4)) {
+    toast('卡號尾數要填 4 個數字');
+    $('card-last4').focus();
+    return;
+  }
+  const id = $('card-form-id').value;
+  const existing = id ? S.creditCards.find((item) => item.id === id) : null;
+  const creditLimitValue = $('card-limit').value;
+  const annualRateValue = $('card-apr').value;
+  const data = {
+    name: $('card-name').value.trim().slice(0, 24),
+    last4: last4 || null,
+    creditLimit: creditLimitValue === '' ? null : Number(creditLimitValue),
+    currentBalance: Number($('card-balance').value),
+    statementDay: Number($('card-statement-day').value),
+    dueDay: Number($('card-due-day').value),
+    annualRate: annualRateValue === '' ? null : Number(annualRateValue),
+  };
+  if (!data.name || data.currentBalance < 0 || data.statementDay < 1 || data.statementDay > 31 || data.dueDay < 1 || data.dueDay > 31) {
+    toast('請檢查信用卡資料');
+    return;
+  }
+  if (existing) {
+    Object.assign(existing, data);
+  } else {
+    S.creditCards.push({ id: `card-${Date.now()}-${Math.floor(Math.random() * 10000)}`, ...data, createdAt: Date.now() });
+    gainGold(20);
+    gainXp(25);
+  }
+  save();
+  closeCardForm();
+  renderAll();
+  toast(existing ? '信用卡資料已更新' : `${data.name} 已加入信用卡迷宮`);
+}
+
 function renderAll() {
   renderHud(); renderHome(); renderQuests(); renderShop(); renderStats();
   if (window.FinanceAdvisor) FinanceAdvisor.render(S);
@@ -1422,6 +1515,11 @@ function init() {
   $('tab-log').onclick = () => FinanceAdvisor.open();
   $('btn-log-cta').onclick = () => openLogSheet('expense');
   $('btn-history-add').onclick = () => openLogSheet('expense');
+  $('btn-card-add').onclick = () => openCardForm();
+  $('card-form').onsubmit = saveCardForm;
+  $('card-form-close').onclick = closeCardForm;
+  $('card-form-cancel').onclick = closeCardForm;
+  $('card-form-mask').onclick = (event) => { if (event.target === $('card-form-mask')) closeCardForm(); };
   $('btn-nospend').onclick = markNoSpend;
   $('log-mask').onclick = (e) => { if (e.target === $('log-mask')) closeLogSheet(); };
   $('chest-img').onclick = openChest;
@@ -1440,6 +1538,7 @@ function init() {
     today: todayKey,
     month: monthKey,
     initIcons,
+    openCardForm,
     speak: (speaker, text) => { switchScreen('home'); speak(speaker, text, sceneChoices(buildObjective())); },
   });
   initOnboard();

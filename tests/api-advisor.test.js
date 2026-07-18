@@ -55,6 +55,7 @@ test('returns a clear configuration error when the server key is absent', async 
   }
 });
 
-test('structured schema supports card payments', () => {
+test('structured schema supports income and card payments', () => {
+  assert.ok(handler.RESPONSE_SCHEMA.properties.draft.properties.kind.enum.includes('income'));
   assert.ok(handler.RESPONSE_SCHEMA.properties.draft.properties.kind.enum.includes('card_payment'));
 });

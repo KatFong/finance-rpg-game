@@ -106,6 +106,25 @@ test('recognizes a supermarket purchase as food and groceries', () => {
   assert.equal(result.draft.amount, 248);
 });
 
+test('turns a salary message into an income draft', () => {
+  const result = localAdvisorTurn([
+    { role: 'user', content: '幫我記收入，今個月人工 $25000' },
+  ], context);
+  assert.equal(result.status, 'draft');
+  assert.equal(result.draft.kind, 'income');
+  assert.equal(result.draft.amount, 25000);
+  assert.match(result.draft.merchant, /人工/);
+});
+
+test('answers a general investment question without creating a transaction', () => {
+  const result = localAdvisorTurn([
+    { role: 'user', content: '我有 $10000，ETF 投資之前要留意咩風險？' },
+  ], context);
+  assert.equal(result.status, 'answer');
+  assert.equal(result.draft.kind, 'none');
+  assert.match(result.reply, /目標|風險/);
+});
+
 test('requires an opening balance when creating a card', () => {
   const result = localAdvisorTurn([
     { role: 'user', content: '新增中銀卡，截數日 5，還款日 25，APR 35%' },
