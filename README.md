@@ -15,7 +15,7 @@ python3 -m http.server 3900 --directory /Users/kat/finance-rpg-game
 
 | 玩家時刻 | 設計回應 |
 |---|---|
-| 打開 App | 第一屏先答「今日仲有幾多日常安心額」 |
+| 打開 App | 單屏營地先答「今日仲有幾多日常安心額」，首頁唔需要捲動 |
 | 想快速處理 | 點按「記眼前一筆」開表格；長按直接開語音記帳 |
 | 記唔清楚 | 由底部「軍師」入口用一句廣東話或語音講，軍師逐項追問 |
 | 資料複雜 | 先整理成卷軸，玩家確認後先正式入帳 |
@@ -26,7 +26,9 @@ python3 -m http.server 3900 --directory /Users/kat/finance-rpg-game
 | 完成小行動 | XP、金幣、寶箱同週目標提供即時但非懲罰式回饋 |
 | 想看全貌 | 手帳分成總覽、信用卡、紀錄，避免一頁塞晒所有資料 |
 
-首頁四項戰況對應個人財務健康：日常掌控、應急護甲、目標進度同自主空間。設計參考 [CFPB Financial Well-Being](https://www.consumerfinance.gov/consumer-tools/educator-tools/financial-well-being-resources/)、[Apple Onboarding](https://developer.apple.com/design/human-interface-guidelines/onboarding) 同 [Apple Designing for Games](https://developer.apple.com/design/human-interface-guidelines/designing-for-games/)；原則係先用真實行動教識玩家、容許犯錯，並將下一步講清楚。
+首頁只保留角色、安心額、本週魔王縮圖、一個軍師提醒，以及記帳／零日常／戰況三個快捷按鈕。任務獎勵、每週洞察、應急護甲同完整建議分流到任務及手帳，避免主畫面變成報表。
+
+理財戰況對應個人財務健康：日常掌控、應急護甲、目標進度同自主空間；詳細資料集中喺手帳。設計參考 [CFPB Financial Well-Being](https://www.consumerfinance.gov/consumer-tools/educator-tools/financial-well-being-resources/)、[Apple Onboarding](https://developer.apple.com/design/human-interface-guidelines/onboarding) 同 [Apple Designing for Games](https://developer.apple.com/design/human-interface-guidelines/designing-for-games/)；原則係先用真實行動教識玩家、容許犯錯，並將下一步講清楚。
 
 ## 財務問卷 + 資產負債遊戲化
 

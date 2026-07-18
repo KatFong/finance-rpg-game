@@ -323,10 +323,7 @@ function speak(speaker, text, choices, immediate) {
 }
 
 function sceneChoices(objective) {
-  return [
-    { label: objective.label, primary: true, action: objective.action },
-    { label: '今日攻略', action: showAdviceDialogue },
-  ];
+  return [{ label: objective.label, primary: true, action: objective.action }];
 }
 
 function showAdviceDialogue() {
@@ -359,8 +356,7 @@ function showStatusDialogue() {
     ? `今日記咗 ${logsToday()} 筆，仲有 ${fmt(left)} 日常安心額。${committedNote}${paceBasis}本週對魔王造成咗 ${fmt(dmg)} 傷害。`
     : `今日記咗 ${logsToday()} 筆，暫時比安心額度多 ${fmt(Math.abs(left))}。唔需要懲罰自己，我哋已經知道情況，之後每一筆都可以重新選擇。`;
   speak('錢錢軍師', text, [
-    { label: '記一筆', primary: true, action: () => openLogSheet('expense') },
-    { label: '返回', action: () => renderSceneDialogue(true) },
+    { label: '返回今日提醒', primary: true, action: () => renderSceneDialogue(true) },
   ]);
 }
 
@@ -1072,7 +1068,7 @@ function renderHome() {
   const ns = $('btn-nospend');
   const done = meta(todayKey()).noSpend;
   ns.disabled = done || dailyLogsToday() > 0;
-  ns.textContent = done ? '零日常消費 — 達成' : '今日零日常消費';
+  ns.textContent = done ? '零日常 ✓' : '零日常';
   // 下一步
   const obj = buildObjective();
   $('objective-reward').textContent = obj.reward;
@@ -1473,6 +1469,7 @@ let activeScreenName = 'home';
 function switchScreen(name) {
   if (!Object.prototype.hasOwnProperty.call(screenScroll, name)) return;
   screenScroll[activeScreenName] = window.scrollY;
+  document.body.dataset.screen = name;
   document.querySelectorAll('.screen').forEach((s) => s.classList.toggle('active', s.id === `screen-${name}`));
   document.querySelectorAll('.tab').forEach((t) => t.classList.toggle('active', t.dataset.screen === name));
   activeScreenName = name;
@@ -1817,6 +1814,7 @@ function init() {
   document.querySelectorAll('[data-stats-view]').forEach((button) => (button.onclick = () => switchStatsView(button.dataset.statsView)));
   $('tab-log').onclick = () => FinanceAdvisor.open();
   bindLogButton();
+  $('btn-home-status').onclick = showStatusDialogue;
   $('btn-history-add').onclick = () => openLogSheet('expense');
   $('btn-card-add').onclick = () => openCardForm();
   $('card-form').onsubmit = saveCardForm;

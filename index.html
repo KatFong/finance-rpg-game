@@ -9,9 +9,9 @@
 <title>理財勇者</title>
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="assets/hero.png">
-<link rel="stylesheet" href="style.css?v=22">
+<link rel="stylesheet" href="style.css?v=23">
 </head>
-<body>
+<body data-screen="home">
 
 <!-- ===== 頂欄 ===== -->
 <header id="topbar">
@@ -61,14 +61,16 @@
       </div>
       <div class="dialogue-choices" id="dialogue-choices"></div>
     </div>
+
+    <div class="home-quick-actions" aria-label="今日快捷行動">
+      <button class="btn primary big" id="btn-log-cta"><span class="icon" data-icon="plus"></span>記一筆</button>
+      <button class="btn ghost" id="btn-nospend"><span class="icon" data-icon="check"></span>零日常</button>
+      <button class="btn ghost" id="btn-home-status"><span class="icon" data-icon="chart"></span>戰況</button>
+    </div>
   </section>
 
+  <div class="home-detail-store" aria-hidden="true">
   <section class="today-deck">
-    <div class="home-actions">
-      <button class="btn primary big" id="btn-log-cta"><span class="icon" data-icon="plus"></span>記眼前一筆</button>
-      <button class="btn ghost" id="btn-nospend"><span class="icon" data-icon="check"></span>今日零消費</button>
-    </div>
-
     <div class="wellbeing-panel" aria-label="理財四項戰況">
       <div class="wellbeing-head"><span>你的生活戰況</span><b>不是分數，是方向</b></div>
       <div class="wellbeing-grid">
@@ -99,12 +101,7 @@
     </div>
   </section>
 
-  <section class="debt-card hidden" id="debt-card">
-    <div class="sec-head">債務惡龍<span class="tip-inline">雪球法：全力打最細嗰條</span></div>
-    <div id="debt-list"></div>
-  </section>
-
-  <section class="advice-card" id="advice-card"></section>
+  </div>
 </main>
 
 <!-- ===== 任務 ===== -->
@@ -132,6 +129,11 @@
     <div class="stat-summary" id="stat-summary"></div>
     <h3 class="sec-sub">資產負債（勇者屬性）</h3>
     <div class="stat-summary three" id="bs-summary"></div>
+    <section class="debt-card hidden" id="debt-card">
+      <div class="sec-head">債務惡龍<span class="tip-inline">雪球法：全力打最細嗰條</span></div>
+      <div id="debt-list"></div>
+    </section>
+    <section class="advice-card" id="advice-card"></section>
     <h3 class="sec-sub">最近 7 日日常消費</h3>
     <div class="chart7" id="chart7"></div>
     <h3 class="sec-sub">本月分類開支</h3>
@@ -402,7 +404,7 @@
 <div id="toast" class="hidden"></div>
 
 <script>window.FRPG_CONFIG = { advisorApiUrl: '' };</script>
-<script src="advisor.js?v=22"></script>
-<script src="app.js?v=22"></script>
+<script src="advisor.js?v=23"></script>
+<script src="app.js?v=23"></script>
 </body>
 </html>
