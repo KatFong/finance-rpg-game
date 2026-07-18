@@ -9,7 +9,7 @@
 <title>理財勇者</title>
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="assets/hero.png">
-<link rel="stylesheet" href="style.css?v=44">
+<link rel="stylesheet" href="style.css?v=46">
 </head>
 <body data-screen="home">
 
@@ -221,8 +221,18 @@
     <div id="credit-list" class="credit-list"></div>
   </section>
   <section class="stats-view" id="stats-history" data-stats-panel="history">
-    <div class="history-head"><div><span>最近足印</span><h3 class="sec-sub">記帳紀錄</h3></div><button class="btn small primary" id="btn-history-add"><span class="icon" data-icon="plus"></span>記一筆</button></div>
+    <div class="history-head"><div><span>足印圖鑑</span><h3 class="sec-sub">完整記帳紀錄</h3></div><div class="history-head-actions"><button class="icon-btn" id="btn-history-export" aria-label="匯出目前篩選 CSV" title="匯出 CSV"><span class="icon" data-icon="download"></span></button><button class="btn small primary" id="btn-history-add"><span class="icon" data-icon="plus"></span>記一筆</button></div></div>
+    <div class="history-tools">
+      <label class="history-search"><span class="icon" data-icon="search"></span><span class="sr-only">搜尋足印</span><input id="history-search" type="search" maxlength="60" autocomplete="off" placeholder="搜尋名稱、分類或金額"></label>
+      <div class="history-filter-grid">
+        <label><span>月份</span><select id="history-month" aria-label="篩選足印月份"></select></label>
+        <label><span>種類</span><select id="history-type" aria-label="篩選足印種類"><option value="all">全部種類</option><option value="expense">支出</option><option value="income">收入</option><option value="transfer">轉移／儲蓄</option><option value="decision">消費遭遇</option></select></label>
+      </div>
+    </div>
+    <div class="history-summary" id="history-summary"></div>
+    <div class="history-result-line"><span id="history-result-status" role="status" aria-live="polite"></span><button class="text-action hidden" id="history-reset" type="button">清除篩選</button></div>
     <div id="recent-logs"></div>
+    <button class="btn ghost history-more hidden" id="history-more" type="button">載入更多</button>
   </section>
 </main>
 
@@ -668,9 +678,10 @@
 <div id="toast" class="hidden"></div>
 
 <script>window.FRPG_CONFIG = { advisorApiUrl: '' };</script>
-<script src="vault.js?v=44"></script>
-<script src="gameplay.js?v=44"></script>
-<script src="advisor.js?v=44"></script>
-<script src="app.js?v=44"></script>
+<script src="vault.js?v=46"></script>
+<script src="gameplay.js?v=46"></script>
+<script src="ledger.js?v=46"></script>
+<script src="advisor.js?v=46"></script>
+<script src="app.js?v=46"></script>
 </body>
 </html>

@@ -282,6 +282,8 @@ const I = {
   sparkles: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.2 3.8L17 8l-3.8 1.2L12 13l-1.2-3.8L7 8l3.8-1.2L12 3zM5 15l.8 2.2L8 18l-2.2.8L5 21l-.8-2.2L2 18l2.2-.8L5 15zM19 13l.7 2.3L22 16l-2.3.7L19 19l-.7-2.3L16 16l2.3-.7L19 13z"/></svg>`,
   save: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 3h12l2 2v16H5z"/><path d="M8 3v6h8V3M8 21v-7h8v7"/></svg>`,
   upload: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4M7 9l5-5 5 5M5 20h14"/></svg>`,
+  download: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v12M7 11l5 5 5-5M5 20h14"/></svg>`,
+  search: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M16 16l5 5"/></svg>`,
   bag: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 8h14l-1 12a2 2 0 01-2 2H8a2 2 0 01-2-2L5 8z"/><path d="M8 8V6a4 4 0 018 0v2"/></svg>`,
   chart: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 20V10M10 20V4M16 20v-8M20 20H4"/></svg>`,
   food: `<svg viewBox="0 0 24 24" fill="none" stroke="#ffc93c" stroke-width="2" stroke-linecap="round"><path d="M4 11h16a8 8 0 01-16 0z" fill="#3a2b6b"/><path d="M8 8c0-1 .5-2 .5-2M12 8c0-1 .5-2 .5-2M16 8c0-1 .5-2 .5-2"/></svg>`,
@@ -2243,6 +2245,108 @@ function renderShop() {
 }
 
 let activeStatsView = 'overview';
+let ledgerFilters = { month: monthKey(), type: 'all', query: '' };
+let ledgerVisibleCount = 25;
+
+function ledgerTimeLabel(ts) {
+  const time = new Date(Number(ts));
+  return Number.isFinite(time.getTime())
+    ? time.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false })
+    : '';
+}
+
+function decisionStatus(entry) {
+  if (entry.status === 'passed') return '已放下';
+  if (entry.status === 'waiting') return Number(entry.revisitAt || 0) <= Date.now() ? '待回看' : '封存中';
+  return '準備記帳';
+}
+
+function allLedgerEntries() {
+  return [
+    ...S.expenses.map((entry) => {
+      const category = CATS.find((item) => item.id === entry.cat) || { name: '其他' };
+      const committed = expenseBudgetImpact(entry) === 'committed';
+      const intent = INTENTS.find((item) => item.id === entry.intent);
+      const card = S.creditCards.find((item) => item.id === entry.cardId);
+      return {
+        ...entry,
+        entryType: 'expense', type: 'expense', typeLabel: '支出',
+        name: entry.merchant || category.name, category: category.name,
+        tag: committed ? '固定／預留' : (intent ? intent.name : '日常支出'),
+        budgetLabel: committed ? '固定／預留' : '日常安心額',
+        account: card ? card.name : '', status: entry.source === 'commitment' ? '每月承諾' : entry.source === 'installment' ? '分期付款' : '',
+        cashflowEffect: -Math.max(0, Number(entry.amount) || 0), timeLabel: ledgerTimeLabel(entry.ts),
+      };
+    }),
+    ...(S.incomes || []).map((entry) => ({
+      ...entry, entryType: 'income', type: 'income', typeLabel: '收入', name: entry.source || '收入',
+      category: '收入', tag: '收入', budgetLabel: '不扣日常', account: '', status: '',
+      cashflowEffect: Math.max(0, Number(entry.amount) || 0), timeLabel: ledgerTimeLabel(entry.ts),
+    })),
+    ...(S.cardPayments || []).map((entry) => {
+      const card = S.creditCards.find((item) => item.id === entry.cardId);
+      return {
+        ...entry, entryType: 'card_payment', type: 'transfer', typeLabel: '還款轉移',
+        name: `${card ? card.name : '信用卡'} 還款`, category: '信用卡', tag: '還款轉移',
+        budgetLabel: '不影響收支', account: card ? card.name : '', status: '降低卡片結欠',
+        cashflowEffect: 0, timeLabel: ledgerTimeLabel(entry.ts),
+      };
+    }),
+    ...(S.goalContributions || []).map((entry) => {
+      const goal = S.goals.find((item) => item.id === entry.goalId);
+      return {
+        ...entry, entryType: 'goal_contribution', type: 'transfer', typeLabel: '願望儲蓄',
+        name: goal ? goal.name : '願望任務', category: '願望任務', tag: '願望儲蓄',
+        budgetLabel: '不影響收支', account: goal ? goal.name : '', status: entry.source === 'allocated' ? '既有存款分配' : '新增儲蓄',
+        cashflowEffect: 0, timeLabel: ledgerTimeLabel(entry.ts),
+      };
+    }),
+    ...(S.decisionEncounters || []).filter((entry) => entry.status !== 'recorded').map((entry) => {
+      const ts = entry.updatedAt || entry.createdAt;
+      return {
+        ...entry, entryType: 'decision', type: 'decision', typeLabel: '消費遭遇',
+        dateKey: keyOf(new Date(ts)), category: '買前推演', tag: '消費遭遇',
+        budgetLabel: '尚未成為支出', account: '', status: decisionStatus(entry),
+        cashflowEffect: 0, ts, timeLabel: ledgerTimeLabel(ts),
+      };
+    }),
+    ...(S.repayments || []).map((entry) => {
+      const debt = S.debts.find((item) => item.id === entry.debtId);
+      return {
+        ...entry, entryType: 'debt_payment', type: 'transfer', typeLabel: '債務還款',
+        dateKey: keyOf(new Date(entry.ts)), name: `${debt ? debt.name : '債務'} 還款`,
+        category: '債務', tag: '斬龍還款', budgetLabel: '不影響收支',
+        account: debt ? debt.name : '', status: '降低債務結欠', cashflowEffect: 0,
+        timeLabel: ledgerTimeLabel(entry.ts),
+      };
+    }),
+  ].sort((a, b) => Number(b.ts || 0) - Number(a.ts || 0) || String(b.dateKey || '').localeCompare(String(a.dateKey || '')));
+}
+
+function historyMonthLabel(value) {
+  const match = String(value).match(/^(\d{4})-(\d{2})$/);
+  return match ? `${match[1]} 年 ${Number(match[2])} 月` : value;
+}
+
+function currentFilteredLedger() {
+  return FinanceLedger.filterEntries(allLedgerEntries(), ledgerFilters);
+}
+
+function exportLedgerCsv() {
+  const entries = currentFilteredLedger();
+  if (!entries.length) { toast('目前篩選未有足印可以匯出'); return; }
+  const csv = FinanceLedger.toCsv(entries);
+  const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = `finance-rpg-ledger-${ledgerFilters.month === 'all' ? 'all' : ledgerFilters.month}-${todayKey()}.csv`;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  toast(`已匯出 ${entries.length} 筆足印 · 檔案只喺裝置產生`);
+}
+
 function switchStatsView(view) {
   activeStatsView = view;
   document.querySelectorAll('[data-stats-view]').forEach((button) => {
@@ -2369,18 +2473,26 @@ function renderStats() {
         <div class="cb-track"><div style="width:${(v / maxC) * 100}%"></div></div>
       </div>`).join('')
     : '<p class="tip">本月未有紀錄。</p>';
-  // 最近紀錄
-  const recent = [
-    ...S.expenses.map((entry) => ({ ...entry, entryType: 'expense' })),
-    ...(S.incomes || []).map((entry) => ({ ...entry, entryType: 'income' })),
-    ...(S.cardPayments || []).map((entry) => ({ ...entry, entryType: 'card_payment' })),
-    ...(S.goalContributions || []).map((entry) => ({ ...entry, entryType: 'goal_contribution' })),
-    ...(S.decisionEncounters || []).filter((entry) => entry.status !== 'recorded').map((entry) => ({
-      ...entry, entryType: 'decision', ts: entry.updatedAt || entry.createdAt,
-      dateKey: keyOf(new Date(entry.updatedAt || entry.createdAt)),
-    })),
-    ...(S.repayments || []).map((entry) => ({ ...entry, dateKey: keyOf(new Date(entry.ts)), entryType: 'debt_payment' })),
-  ].sort((a, b) => b.ts - a.ts).slice(0, 10);
+  // 完整足印圖鑑
+  const allEntries = allLedgerEntries();
+  const months = [...new Set([monthKey(), ...FinanceLedger.monthKeys(allEntries)])].sort((a, b) => b.localeCompare(a));
+  if (ledgerFilters.month !== 'all' && !months.includes(ledgerFilters.month)) ledgerFilters.month = monthKey();
+  $('history-month').innerHTML = '<option value="all">所有月份</option>' + months.map((value) => `<option value="${value}">${historyMonthLabel(value)}</option>`).join('');
+  $('history-month').value = ledgerFilters.month;
+  $('history-type').value = ledgerFilters.type;
+  if ($('history-search').value !== ledgerFilters.query) $('history-search').value = ledgerFilters.query;
+  const filteredEntries = FinanceLedger.filterEntries(allEntries, ledgerFilters);
+  const summary = FinanceLedger.summarizeEntries(filteredEntries);
+  const recent = filteredEntries.slice(0, ledgerVisibleCount);
+  $('history-summary').innerHTML = `
+    <div><b class="income">${fmt(summary.income)}</b><span>實際收入</span></div>
+    <div><b class="expense">${fmt(summary.spending)}</b><span>實際支出</span></div>
+    <div><b>${fmt(summary.net)}</b><span>已記收支差</span></div>`;
+  $('history-result-status').textContent = `找到 ${summary.count} 筆 · 已顯示 ${recent.length} 筆${summary.transfers > 0 ? ` · 另有 ${fmt(summary.transfers)} 轉移` : ''}`;
+  const hasFilters = ledgerFilters.month !== 'all' || ledgerFilters.type !== 'all' || !!ledgerFilters.query;
+  $('history-reset').classList.toggle('hidden', !hasFilters);
+  $('history-more').classList.toggle('hidden', recent.length >= filteredEntries.length);
+  $('history-more').textContent = `載入更多（尚有 ${Math.max(0, filteredEntries.length - recent.length)} 筆）`;
   $('recent-logs').innerHTML = recent.length
     ? recent.map((entry) => entry.entryType === 'income'
       ? `<div class="log-row">
@@ -2411,7 +2523,7 @@ function renderStats() {
         <div><span class="lr-cat">${escapeHtml(entry.merchant || (CATS.find((c) => c.id === entry.cat) || { name: '其他' }).name)}</span><span class="lr-date">${entry.dateKey.slice(5)}</span>${expenseBudgetImpact(entry) === 'committed' ? '<span class="intent-tag committed-tag">固定／預留</span>' : (entry.intent ? `<span class="intent-tag">${(INTENTS.find((item) => item.id === entry.intent) || { name: '消費' }).name}</span>` : '')}</div>
         <div class="log-amount"><span class="lr-amt">-${fmt(entry.amount)}</span>${['installment', 'commitment'].includes(entry.source) ? '' : `<button class="icon-btn log-delete impact-edit" data-impact-expense="${entry.id}" aria-label="更改呢筆支出嘅預算分類" title="更改預算分類"><span class="icon" data-icon="edit"></span></button>`}<button class="icon-btn log-delete" data-del="${entry.id}" aria-label="刪除呢筆紀錄" title="刪除"><span class="icon" data-icon="trash"></span></button></div>
       </div>`).join('')
-    : '<p class="tip">未有紀錄，去記低第一筆啦。</p>';
+    : `<div class="ledger-empty"><b>${allEntries.length ? '搵唔到相符足印' : '仲未有記帳足印'}</b><p>${allEntries.length ? '改一改月份、種類或者搜尋字詞，再翻開圖鑑。' : '第一筆收入、支出或還款會由呢度開始累積。'}</p></div>`;
   initIcons($('recent-logs'));
   $('recent-logs').querySelectorAll('[data-del-goal-contribution]').forEach((button) => {
     button.onclick = () => removeGoalContribution(button.dataset.delGoalContribution);
@@ -3159,6 +3271,31 @@ function init() {
   });
   $('btn-home-status').onclick = showStatusDialogue;
   $('btn-history-add').onclick = () => openLogSheet('expense');
+  $('btn-history-export').onclick = exportLedgerCsv;
+  $('history-search').oninput = (event) => {
+    ledgerFilters.query = event.target.value.slice(0, 60);
+    ledgerVisibleCount = 25;
+    renderStats();
+  };
+  $('history-month').onchange = (event) => {
+    ledgerFilters.month = event.target.value;
+    ledgerVisibleCount = 25;
+    renderStats();
+  };
+  $('history-type').onchange = (event) => {
+    ledgerFilters.type = event.target.value;
+    ledgerVisibleCount = 25;
+    renderStats();
+  };
+  $('history-reset').onclick = () => {
+    ledgerFilters = { month: 'all', type: 'all', query: '' };
+    ledgerVisibleCount = 25;
+    renderStats();
+  };
+  $('history-more').onclick = () => {
+    ledgerVisibleCount += 25;
+    renderStats();
+  };
   $('btn-commitment-add').onclick = () => openCommitmentForm();
   $('btn-card-add').onclick = () => openCardForm();
   $('btn-vault').onclick = openVault;
