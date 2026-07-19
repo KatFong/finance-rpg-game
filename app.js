@@ -71,6 +71,8 @@ const defaults = () => ({
   activeGoalId: null,
   commitments: [],         // {id, name, amount, dueDay, type, remindDays, autopay, active}
   commitmentSkips: [],     // {id, commitmentId, monthKey, createdAt}
+  plannedExpenses: [],     // {id, name, target, initialReserved, dueDate, cat, cardId, paidAt}
+  plannedExpenseAllocations: [], // {id, planId, amount, dateKey, ts}
   decisionEncounters: [],  // {id, name, amount, source, intent, status, revisitAt, createdAt}
   cashflowPlan: null,      // {balance, asOfDate, capturedAt, nextIncomeDate, nextIncomeAmount, buffer}
   monthReviews: {},        // monthKey -> {focusId, completedAt, rewardClaimed}
@@ -100,6 +102,8 @@ function load() {
       state.goalRewardWeeks = state.goalRewardWeeks && typeof state.goalRewardWeeks === 'object' ? state.goalRewardWeeks : {};
       state.commitments = Array.isArray(state.commitments) ? state.commitments : [];
       state.commitmentSkips = Array.isArray(state.commitmentSkips) ? state.commitmentSkips : [];
+      state.plannedExpenses = Array.isArray(state.plannedExpenses) ? state.plannedExpenses : [];
+      state.plannedExpenseAllocations = Array.isArray(state.plannedExpenseAllocations) ? state.plannedExpenseAllocations : [];
       state.decisionEncounters = Array.isArray(state.decisionEncounters) ? state.decisionEncounters : [];
       state.cardAdjustments = Array.isArray(state.cardAdjustments) ? state.cardAdjustments : [];
       state.cashflowPlan = state.cashflowPlan && typeof state.cashflowPlan === 'object' ? state.cashflowPlan : null;
@@ -133,6 +137,7 @@ function monthlyReviewFor(value) {
     incomes: S.incomes || [],
     cardAdjustments: S.cardAdjustments || [],
     goalContributions: S.goalContributions || [],
+    reserveAllocations: S.plannedExpenseAllocations || [],
     cardPayments: S.cardPayments || [],
     debtPayments: (S.repayments || []).map((entry) => ({ ...entry, dateKey: entry.dateKey || keyOf(new Date(entry.ts)) })),
     activityDateKeys: Object.keys(S.dayMeta || {}).filter((dateKey) => {
@@ -149,7 +154,7 @@ function monthlyReviewKeys() {
   };
   [
     ...(S.expenses || []), ...(S.incomes || []), ...(S.cardAdjustments || []),
-    ...(S.goalContributions || []), ...(S.cardPayments || []),
+    ...(S.goalContributions || []), ...(S.plannedExpenseAllocations || []), ...(S.cardPayments || []),
   ].forEach((entry) => add(entry.dateKey));
   (S.repayments || []).forEach((entry) => add(entry.dateKey || keyOf(new Date(entry.ts))));
   Object.keys(S.dayMeta || {}).forEach(add);
@@ -169,6 +174,21 @@ function commitmentReminder(includeUpcoming = true) {
   const schedule = commitmentSchedule();
   return schedule.items.find((item) => item.status === 'overdue' || item.status === 'due')
     || (includeUpcoming ? schedule.items.find((item) => item.dueSoon) : null);
+}
+function plannedProgress(plan) {
+  return FinanceGameplay.plannedExpenseProgress(plan, S.plannedExpenseAllocations, todayKey());
+}
+function plannedExpenseReminder(includeUpcoming = true) {
+  const statusOrder = { overdue: 0, ready: 1, due_soon: 2, building: 3, invalid: 4, paid: 5 };
+  return (S.plannedExpenses || [])
+    .filter((plan) => !plan.paidAt)
+    .map((plan) => ({ plan, progress: plannedProgress(plan) }))
+    .filter((entry) => entry.progress.status === 'overdue'
+      || (entry.progress.daysLeft != null && entry.progress.daysLeft <= 0)
+      || (entry.progress.status === 'ready' && entry.progress.daysLeft != null && entry.progress.daysLeft <= 30)
+      || (includeUpcoming && entry.progress.daysLeft != null && entry.progress.daysLeft >= 0 && entry.progress.daysLeft <= 7))
+    .sort((a, b) => (statusOrder[a.progress.status] - statusOrder[b.progress.status])
+      || String(a.plan.dueDate).localeCompare(String(b.plan.dueDate)))[0] || null;
 }
 function creditStatementModel(card) {
   return FinanceGameplay.creditStatementModel(card);
@@ -239,6 +259,11 @@ function cashflowObligationSource(plan) {
     }
     if (statement.statementKnown && statement.statementDue > 0 && validDueDate && card.statementDueDate <= plan.nextIncomeDate) {
       obligations.push({ id: card.id, kind: 'card', name: `${card.name} 今期帳單`, amount: statement.statementDue, dueDate: card.statementDueDate });
+    }
+  });
+  (S.plannedExpenses || []).filter((entry) => !entry.paidAt).forEach((entry) => {
+    if (/^\d{4}-\d{2}-\d{2}$/.test(String(entry.dueDate || '')) && entry.dueDate <= plan.nextIncomeDate) {
+      obligations.push({ id: entry.id, kind: 'planned-expense', name: entry.name, amount: entry.target, dueDate: entry.dueDate });
     }
   });
   return { obligations, statementGaps, cardCommitments };
@@ -334,6 +359,7 @@ function dayHasMoneyActivity(k) {
     || (S.cardPayments || []).some((entry) => entry.dateKey === k)
     || (S.cardAdjustments || []).some((entry) => entry.dateKey === k)
     || (S.goalContributions || []).some((entry) => entry.dateKey === k)
+    || (S.plannedExpenseAllocations || []).some((entry) => entry.dateKey === k)
     || (S.repayments || []).some((entry) => entry.ts && keyOf(new Date(entry.ts)) === k);
 }
 function moneyActivityCount(k) {
@@ -342,6 +368,7 @@ function moneyActivityCount(k) {
     + (S.cardPayments || []).filter((entry) => entry.dateKey === k).length
     + (S.cardAdjustments || []).filter((entry) => entry.dateKey === k).length
     + (S.goalContributions || []).filter((entry) => entry.dateKey === k).length
+    + (S.plannedExpenseAllocations || []).filter((entry) => entry.dateKey === k).length
     + (S.repayments || []).filter((entry) => entry.ts && keyOf(new Date(entry.ts)) === k).length;
 }
 function meta(k) {
@@ -622,9 +649,10 @@ function renderSceneDialogue(force) {
   const pendingDecision = dueDecision();
   const billReminder = commitmentReminder(true);
   const cardReminder = creditStatementReminder(true);
+  const reserveReminder = plannedExpenseReminder(true);
   const monthReview = pendingMonthReview();
   const cashflow = cashflowModel();
-  const key = [todayKey(), S.heroName, pace.safe, bossMaxHp(), spent, logsToday(), bossDamage(), S.boss.claimed, S.lastLogDate, objective.label, cardReminder && cardReminder.statement.statementDue, monthReview && monthReview.monthKey, cashflow.status, cashflow.gapAmount].join('|');
+  const key = [todayKey(), S.heroName, pace.safe, bossMaxHp(), spent, logsToday(), bossDamage(), S.boss.claimed, S.lastLogDate, objective.label, cardReminder && cardReminder.statement.statementDue, reserveReminder && reserveReminder.plan.id, reserveReminder && reserveReminder.progress.remaining, monthReview && monthReview.monthKey, cashflow.status, cashflow.gapAmount].join('|');
   if (!force && activeDialogueKey === key && homeReminder) return;
   activeDialogueKey = key;
 
@@ -643,6 +671,9 @@ function renderSceneDialogue(force) {
     text = `${S.heroName}，${cardReminder.card.name} 今期尚欠 ${fmt(cardReminder.statement.statementDue)}，仲有 ${cardReminder.daysUntil} 日到期。最低還款只係避免漏繳嘅底線；實際利息按發卡行帳單。`;
   } else if (billReminder && billReminder.status === 'upcoming' && objective.label === '查看每月承諾') {
     text = `${S.heroName}，${billReminder.name} 仲有 ${billReminder.daysUntil} 日到期，預計 ${fmt(billReminder.amount)}。我只係提前提你預留，未付款前唔會當成支出。`;
+  } else if (reserveReminder && ['處理預備金任務', '預留一段資金', '查看預備金任務'].includes(objective.label)) {
+    const { plan, progress } = reserveReminder;
+    text = `${S.heroName}，「${plan.name}」目標係 ${fmt(progress.target)}，已經圈起 ${fmt(progress.reserved)}。${progress.remaining > 0 ? `仲有 ${fmt(progress.remaining)}，可以分段行，唔使喺付款日一次承受。` : '預備金已齊；確認真正付款之前，呢筆仍然唔係支出。'}`;
   } else if (monthReview && objective.label === '完成月結營火') {
     text = `${S.heroName}，${monthLabel(monthReview.monthKey)}嘅足印已經放到營火邊。我會逐句講清收入、實際支出同轉移；最後由你為下月只留一個策略。空白日唔需要補。`;
   } else if (!active && returning) {
@@ -1380,6 +1411,7 @@ function reviewToday() {
     .reduce((sum, entry) => sum + (entry.type === 'refund' ? -Number(entry.amount || 0) : Number(entry.amount || 0)), 0);
   const debtPaid = (S.repayments || []).filter((entry) => entry.ts && keyOf(new Date(entry.ts)) === t).reduce((sum, entry) => sum + Number(entry.amount || 0), 0);
   const goalSavedToday = (S.goalContributions || []).filter((entry) => entry.dateKey === t).reduce((sum, entry) => sum + Number(entry.amount || 0), 0);
+  const reserveSavedToday = (S.plannedExpenseAllocations || []).filter((entry) => entry.dateKey === t).reduce((sum, entry) => sum + Number(entry.amount || 0), 0);
   const noSpend = m.noSpend && daily === 0;
   popup('今日金流盤點', `<div class="review-summary">
     <p>收隊前望一眼就夠，唔需要為咗完成任務而製造更多紀錄。</p>
@@ -1389,6 +1421,7 @@ function reviewToday() {
     <div><span>還卡／還債</span><b>${fmt(cardPaid + debtPaid)}</b></div>
     <div><span>卡片利息／收費／退款</span><b>${fmt(cardCosts)}</b></div>
     <div><span>願望儲蓄</span><b class="positive">${fmt(goalSavedToday)}</b></div>
+    <div><span>預備金預留</span><b class="positive">${fmt(reserveSavedToday)}</b></div>
   </div>`, {
     confirmLabel: '完成盤點',
     cancelLabel: '再檢查一下',
@@ -1449,7 +1482,7 @@ function monthReviewFrames(model) {
     },
     {
       title: '支出輪廓',
-      text: `日常消費 ${fmt(model.dailySpent)}，固定／預留 ${fmt(model.committedSpent)}；${cardCopy} 今月最大一類足印係 ${topCategory}。還卡同還債 ${fmt(model.transfers)} 只列作資金轉移，冇再當成消費；願望存入係 ${fmt(model.goalSaved)}。`,
+      text: `日常消費 ${fmt(model.dailySpent)}，固定／預留 ${fmt(model.committedSpent)}；${cardCopy} 今月最大一類足印係 ${topCategory}。還卡同還債 ${fmt(model.transfers)} 只列作資金轉移，冇再當成消費；願望存入 ${fmt(model.goalSaved)}，預備金預留 ${fmt(model.reserveSaved)}。`,
       metrics: true,
     },
     {
@@ -1690,6 +1723,8 @@ function buildObjective() {
   const upcomingCardStatement = creditStatementReminder(true);
   const urgentCommitment = commitmentReminder(false);
   const upcomingCommitment = commitmentReminder(true);
+  const urgentReserve = plannedExpenseReminder(false);
+  const upcomingReserve = plannedExpenseReminder(true);
   const monthReview = pendingMonthReview();
   const cashflow = cashflowModel();
   const untaggedExpense = [...S.expenses].reverse().find((item) => item.dateKey === t && expenseBudgetImpact(item) === 'daily' && !item.intent);
@@ -1711,6 +1746,15 @@ function buildObjective() {
       body: `<b>${escapeHtml(urgentCommitment.name)}</b> ${overdue ? `已過咗 ${Math.abs(urgentCommitment.daysUntil)} 日` : '今日到期'}，預計 ${fmt(urgentCommitment.amount)}。呢筆屬固定承諾，確認付款後唔會扣日常安心額。`,
       label: urgentCommitment.autopay ? '確認已自動扣款' : '記錄承諾付款',
       action: () => openCommitmentPayment(urgentCommitment.id),
+    };
+  }
+  if (urgentReserve) {
+    const { plan, progress } = urgentReserve;
+    return {
+      reward: progress.status === 'ready' ? '資金已齊' : progress.status === 'overdue' ? '日期已過' : '今日預計付款',
+      body: `<b>${escapeHtml(plan.name)}</b> 預計 ${fmt(progress.target)}，已圈起 ${fmt(progress.reserved)}。${progress.remaining > 0 ? `仲有 ${fmt(progress.remaining)} 未預留；可以按實際情況付款，或者先調整任務。` : '預備金已齊，確認實際金額後先會成為支出。'}`,
+      label: '處理預備金任務',
+      action: () => openPlannedPayment(plan.id),
     };
   }
   if (cashflow.status === 'gap') {
@@ -1782,6 +1826,15 @@ function buildObjective() {
       body: `<b>${escapeHtml(upcomingCommitment.name)}</b> 將於 ${upcomingCommitment.dueDate.slice(5).replace('-', '月')}日到期，預計 ${fmt(upcomingCommitment.amount)}。而家唔使當成今日消費，只要先確認資金已預留。`,
       label: '查看每月承諾',
       action: () => { switchStatsView('commitments'); switchScreen('stats'); },
+    };
+  }
+  if (upcomingReserve && upcomingReserve.progress.daysLeft > 0) {
+    const { plan, progress } = upcomingReserve;
+    return {
+      reward: `${progress.daysLeft} 日後`,
+      body: `<b>${escapeHtml(plan.name)}</b> 仲有 ${progress.daysLeft} 日，目標 ${fmt(progress.target)}，已預留 ${fmt(progress.reserved)}。${progress.remaining > 0 ? `今次可以先圈起 ${fmt(Math.min(progress.remaining, progress.monthlySuggested || progress.remaining))}。` : '資金已齊，未付款前仍然唔會當成支出。'}`,
+      label: progress.remaining > 0 ? '預留一段資金' : '查看預備金任務',
+      action: () => progress.remaining > 0 ? openPlannedAllocation(plan.id) : openPlannedPayment(plan.id),
     };
   }
   if (monthReview) {
@@ -2156,7 +2209,7 @@ function vaultDate(value) {
 function vaultSummaryHtml(summary) {
   const moneyEntries = Number(summary.expenses || 0) + Number(summary.incomeEntries || 0);
   return `<div><span>收支足印</span><b>${moneyEntries}</b></div>
-    <div><span>卡片／承諾</span><b>${Number(summary.cards || 0) + Number(summary.installments || 0) + Number(summary.commitments || 0)}</b></div>
+    <div><span>卡片／承諾</span><b>${Number(summary.cards || 0) + Number(summary.installments || 0) + Number(summary.commitments || 0) + Number(summary.plannedExpenses || 0)}</b></div>
     <div><span>願望章節</span><b>${summary.goals || 0}</b></div>
     <div><span>消費卷軸</span><b>${summary.decisions || 0}</b></div>`;
 }
@@ -2923,7 +2976,7 @@ function allLedgerEntries() {
         name: entry.merchant || category.name, category: category.name,
         tag: committed ? '固定／預留' : (intent ? intent.name : '日常支出'),
         budgetLabel: committed ? '固定／預留' : '日常安心額',
-        account: card ? card.name : '', status: entry.source === 'commitment' ? '每月承諾' : entry.source === 'installment' ? '分期付款' : '',
+        account: card ? card.name : '', status: entry.source === 'commitment' ? '每月承諾' : entry.source === 'installment' ? '分期付款' : entry.source === 'planned-expense' ? '預備金結算' : '',
         cashflowEffect: -Math.max(0, Number(entry.amount) || 0), timeLabel: ledgerTimeLabel(entry.ts),
       };
     }),
@@ -2959,6 +3012,15 @@ function allLedgerEntries() {
         ...entry, entryType: 'goal_contribution', type: 'transfer', typeLabel: '願望儲蓄',
         name: goal ? goal.name : '願望任務', category: '願望任務', tag: '願望儲蓄',
         budgetLabel: '不影響收支', account: goal ? goal.name : '', status: entry.source === 'allocated' ? '既有存款分配' : '新增儲蓄',
+        cashflowEffect: 0, timeLabel: ledgerTimeLabel(entry.ts),
+      };
+    }),
+    ...(S.plannedExpenseAllocations || []).map((entry) => {
+      const plan = S.plannedExpenses.find((item) => item.id === entry.planId);
+      return {
+        ...entry, entryType: 'planned_allocation', type: 'transfer', typeLabel: '預備金預留',
+        name: plan ? plan.name : '預備金任務', category: '預備金', tag: '資金分配',
+        budgetLabel: '不影響收支', account: plan ? plan.name : '', status: '圈起現有資金', canDelete: !(plan && plan.paidAt),
         cashflowEffect: 0, timeLabel: ledgerTimeLabel(entry.ts),
       };
     }),
@@ -3086,7 +3148,7 @@ function saveEntryEdit(event) {
   const expense = S.expenses.find((entry) => String(entry.id) === entryId);
   const category = $('entry-edit-category').value;
   const cardId = S.creditCards.some((card) => card.id === $('entry-edit-card').value) ? $('entry-edit-card').value : null;
-  if (!expense || ['installment', 'commitment'].includes(expense.source) || !CATS.some((item) => item.id === category)) {
+  if (!expense || ['installment', 'commitment', 'planned-expense'].includes(expense.source) || !CATS.some((item) => item.id === category)) {
     toast('呢筆足印暫時唔可以喺度修正');
     return;
   }
@@ -3179,6 +3241,59 @@ function renderCommitments() {
     S.commitmentSkips = S.commitmentSkips.filter((entry) => !(entry.commitmentId === button.dataset.commitmentUnskip && entry.monthKey === monthKey()));
     save(); renderAll(); toast('已恢復本月承諾');
   }));
+  renderPlannedExpenses();
+}
+
+function plannedStatusCopy(plan, progress) {
+  if (progress.status === 'paid') return `已付款 ${fmt(plan.paidAmount || plan.target)}`;
+  if (progress.status === 'ready') return '預備金已齊，可以結算';
+  if (progress.status === 'overdue') return `原定日期過咗 ${Math.abs(progress.daysLeft)} 日 · 任務仍然保留`;
+  if (progress.status === 'due_soon') return progress.daysLeft === 0 ? '今日預計付款' : `${progress.daysLeft} 日後預計付款`;
+  return progress.daysLeft == null ? '日期待補' : `${progress.daysLeft} 日後 · 建議每月預留 ${fmt(progress.monthlySuggested)}`;
+}
+
+function renderPlannedExpenses() {
+  const plans = (S.plannedExpenses || []).map((plan) => ({ plan, progress: plannedProgress(plan) }));
+  const statusOrder = { overdue: 0, ready: 1, due_soon: 2, building: 3, invalid: 4, paid: 5 };
+  plans.sort((a, b) => (statusOrder[a.progress.status] - statusOrder[b.progress.status])
+    || String(a.plan.dueDate || '').localeCompare(String(b.plan.dueDate || '')));
+  const active = plans.filter((entry) => entry.progress.status !== 'paid');
+  const reserved = active.reduce((sum, entry) => sum + entry.progress.reserved, 0);
+  const remaining = active.reduce((sum, entry) => sum + entry.progress.remaining, 0);
+  $('reserve-overview').innerHTML = `
+    <div><b>${active.length}</b><span>進行中任務</span></div>
+    <div><b>${fmt(reserved)}</b><span>已圈起資金</span></div>
+    <div><b>${fmt(remaining)}</b><span>尚待預留</span></div>`;
+  if (!plans.length) {
+    $('reserve-list').innerHTML = `<div class="reserve-empty"><img class="art" data-art="shield" alt="預備金護盾"><div><b>將大額支出拆成細段路程</b><p>年費、醫療、維修等唔需要塞入每日額度；先定日期同總額，再慢慢圈起資金。</p></div><button class="btn primary" data-planned-empty>建立第一項</button></div>`;
+  } else {
+    $('reserve-list').innerHTML = plans.map(({ plan, progress }) => {
+      const allocations = (S.plannedExpenseAllocations || []).filter((entry) => entry.planId === plan.id).sort((a, b) => Number(b.ts || 0) - Number(a.ts || 0)).slice(0, 3);
+      const date = /^\d{4}-\d{2}-\d{2}$/.test(String(plan.dueDate || '')) ? { month: Number(plan.dueDate.slice(5, 7)), day: Number(plan.dueDate.slice(8, 10)) } : { month: '?', day: '?' };
+      const mainAction = progress.status === 'paid'
+        ? ''
+        : progress.status === 'ready'
+          ? `<button class="btn small primary" data-planned-pay="${escapeHtml(plan.id)}">確認付款</button>`
+          : `<button class="btn small primary" data-planned-allocate="${escapeHtml(plan.id)}">預留資金</button><button class="btn small ghost" data-planned-pay="${escapeHtml(plan.id)}">直接付款</button>`;
+      return `<article class="reserve-item ${progress.status}">
+        <div class="reserve-date"><b>${date.day}</b><span>${date.month}月</span></div>
+        <div class="reserve-copy">
+          <div class="reserve-title"><div><span>${progress.status === 'paid' ? '任務紀錄' : '預備金任務'}</span><h4>${escapeHtml(plan.name)}</h4></div>${progress.status === 'paid' ? '' : `<button class="icon-btn" data-planned-edit="${escapeHtml(plan.id)}" aria-label="編輯${escapeHtml(plan.name)}" title="編輯預備金任務"><span class="icon" data-icon="edit"></span></button>`}</div>
+          <div class="reserve-track" aria-label="預備金進度 ${Math.round(progress.progressPct)}%"><span style="width:${progress.progressPct}%"></span></div>
+          <div class="reserve-metrics"><span>已預留 <b>${fmt(progress.reserved)}</b></span><span>目標 <b>${fmt(progress.target)}</b></span></div>
+          <p class="reserve-state ${progress.status}">${plannedStatusCopy(plan, progress)}</p>
+          ${allocations.length ? `<div class="reserve-allocation-log">${allocations.map((entry) => `<span>${entry.dateKey.slice(5)} · ${fmt(entry.amount)}<button class="icon-btn" data-planned-allocation-delete="${escapeHtml(entry.id)}" aria-label="刪除呢次預留" title="刪除預留"><span class="icon" data-icon="trash"></span></button></span>`).join('')}</div>` : ''}
+          ${mainAction ? `<div class="reserve-actions">${mainAction}</div>` : ''}
+        </div>
+      </article>`;
+    }).join('');
+  }
+  initArt($('reserve-list')); initIcons($('reserve-list'));
+  $('reserve-list').querySelectorAll('[data-planned-empty]').forEach((button) => (button.onclick = () => openPlannedExpenseForm()));
+  $('reserve-list').querySelectorAll('[data-planned-edit]').forEach((button) => (button.onclick = () => openPlannedExpenseForm(button.dataset.plannedEdit)));
+  $('reserve-list').querySelectorAll('[data-planned-allocate]').forEach((button) => (button.onclick = () => openPlannedAllocation(button.dataset.plannedAllocate)));
+  $('reserve-list').querySelectorAll('[data-planned-pay]').forEach((button) => (button.onclick = () => openPlannedPayment(button.dataset.plannedPay)));
+  $('reserve-list').querySelectorAll('[data-planned-allocation-delete]').forEach((button) => (button.onclick = () => removePlannedAllocation(button.dataset.plannedAllocationDelete)));
 }
 
 function cashflowDateLabel(dateKey) {
@@ -3423,6 +3538,11 @@ function renderStats() {
         <div><span class="lr-cat">${escapeHtml((S.goals.find((goal) => goal.id === entry.goalId) || { name: '願望任務' }).name)}</span><span class="lr-date">${entry.dateKey.slice(5)}</span><span class="intent-tag goal-tag">願望儲蓄</span></div>
         <div class="log-amount"><span class="lr-amt transfer">${fmt(entry.amount)}</span><button class="icon-btn log-delete" data-del-goal-contribution="${entry.id}" aria-label="刪除願望存入紀錄" title="刪除"><span class="icon" data-icon="trash"></span></button></div>
       </div>`
+      : entry.entryType === 'planned_allocation'
+      ? `<div class="log-row">
+        <div><span class="lr-cat">${escapeHtml(entry.name)}</span><span class="lr-date">${entry.dateKey.slice(5)}</span><span class="intent-tag transfer-tag">預備金預留</span></div>
+        <div class="log-amount"><span class="lr-amt transfer">${fmt(entry.amount)}</span>${entry.canDelete ? `<button class="icon-btn log-delete" data-del-planned-allocation="${escapeHtml(entry.id)}" aria-label="刪除呢次預備金預留" title="刪除"><span class="icon" data-icon="trash"></span></button>` : ''}</div>
+      </div>`
       : entry.entryType === 'decision'
       ? `<div class="log-row decision-log-row">
         <div><span class="lr-cat">${escapeHtml(entry.name || '消費遭遇')}</span><span class="lr-date">${entry.dateKey.slice(5)}</span><span class="intent-tag decision-tag">${entry.status === 'waiting' ? (Number(entry.revisitAt || 0) <= Date.now() ? '待回看' : '封存中') : entry.status === 'passed' ? '已放下' : '準備記帳'}</span></div>
@@ -3445,12 +3565,15 @@ function renderStats() {
       </div>`
       : `<div class="log-row">
         <div><span class="lr-cat">${escapeHtml(entry.merchant || (CATS.find((c) => c.id === entry.cat) || { name: '其他' }).name)}</span><span class="lr-date">${entry.dateKey.slice(5)}</span>${expenseBudgetImpact(entry) === 'committed' ? '<span class="intent-tag committed-tag">固定／預留</span>' : (entry.intent ? `<span class="intent-tag">${(INTENTS.find((item) => item.id === entry.intent) || { name: '消費' }).name}</span>` : '')}</div>
-        <div class="log-amount"><span class="lr-amt">-${fmt(entry.amount)}</span>${['installment', 'commitment'].includes(entry.source) ? '' : `<button class="icon-btn log-delete impact-edit" data-edit-expense="${entry.id}" aria-label="編輯呢筆支出" title="編輯支出"><span class="icon" data-icon="edit"></span></button>`}<button class="icon-btn log-delete" data-del="${entry.id}" aria-label="刪除呢筆紀錄" title="刪除"><span class="icon" data-icon="trash"></span></button></div>
+        <div class="log-amount"><span class="lr-amt">-${fmt(entry.amount)}</span>${['installment', 'commitment', 'planned-expense'].includes(entry.source) ? '' : `<button class="icon-btn log-delete impact-edit" data-edit-expense="${entry.id}" aria-label="編輯呢筆支出" title="編輯支出"><span class="icon" data-icon="edit"></span></button>`}<button class="icon-btn log-delete" data-del="${entry.id}" aria-label="刪除呢筆紀錄" title="刪除"><span class="icon" data-icon="trash"></span></button></div>
       </div>`).join('')
     : `<div class="ledger-empty"><b>${allEntries.length ? '搵唔到相符足印' : '仲未有記帳足印'}</b><p>${allEntries.length ? '改一改月份、種類或者搜尋字詞，再翻開圖鑑。' : '第一筆收入、支出或還款會由呢度開始累積。'}</p></div>`;
   initIcons($('recent-logs'));
   $('recent-logs').querySelectorAll('[data-del-goal-contribution]').forEach((button) => {
     button.onclick = () => removeGoalContribution(button.dataset.delGoalContribution);
+  });
+  $('recent-logs').querySelectorAll('[data-del-planned-allocation]').forEach((button) => {
+    button.onclick = () => removePlannedAllocation(button.dataset.delPlannedAllocation);
   });
   $('recent-logs').querySelectorAll('[data-open-decision]').forEach((button) => {
     button.onclick = () => openDecisionEncounter(button.dataset.openDecision);
@@ -3465,7 +3588,7 @@ function renderStats() {
     const expense = S.expenses.find((entry) => entry.id === Number(b.dataset.del));
     if (!expense) return;
     const category = CATS.find((item) => item.id === expense.cat);
-    popup('刪除呢個足印？', `<p class="confirm-copy"><b>${escapeHtml(expense.merchant || (category ? category.name : '支出'))} ${fmt(expense.amount)}</b><br>刪除後，相關信用卡結欠、分期、每月承諾狀態同任務進度都會一齊同步。</p>`, {
+    popup('刪除呢個足印？', `<p class="confirm-copy"><b>${escapeHtml(expense.merchant || (category ? category.name : '支出'))} ${fmt(expense.amount)}</b><br>刪除後，相關信用卡結欠、分期、每月承諾或預備金任務狀態都會一齊同步。</p>`, {
       confirmLabel: '確認刪除',
       cancelLabel: '保留紀錄',
       onConfirm: () => {
@@ -3476,6 +3599,16 @@ function renderStats() {
             payment.status = 'planned';
             payment.paidAt = null;
             plan.paidMonths = plan.schedule.filter((item) => item.status === 'paid').length;
+          }
+        } else if (expense.source === 'planned-expense' && expense.plannedExpenseId) {
+          const plan = S.plannedExpenses.find((item) => item.id === expense.plannedExpenseId);
+          if (plan) Object.assign(plan, { paidAt: null, paidDateKey: null, paidAmount: null, paymentExpenseId: null, paidCardId: null });
+          if (expense.cardId) {
+            const card = S.creditCards.find((item) => item.id === expense.cardId);
+            if (card) {
+              card.currentBalance = Math.max(0, Number(card.currentBalance || 0) - Number(expense.amount || 0));
+              normalizeCreditStatement(card);
+            }
           }
         } else if (expense.cardId) {
           const card = S.creditCards.find((item) => item.id === expense.cardId);
@@ -3489,7 +3622,9 @@ function renderStats() {
         save(); renderAll();
         toast(expense.source === 'commitment'
           ? '付款已刪除，呢項每月承諾已恢復待繳'
-          : '紀錄已刪除，相關結欠同任務進度已同步');
+          : expense.source === 'planned-expense'
+            ? '付款已刪除，預備金任務已恢復待結算'
+            : '紀錄已刪除，相關結欠同任務進度已同步');
       },
     });
   }));
@@ -3567,6 +3702,168 @@ function renderStats() {
       },
     });
   }));
+}
+
+function closePlannedExpenseForm() { $('planned-form-mask').classList.add('hidden'); }
+function closePlannedAllocation() { $('planned-allocation-mask').classList.add('hidden'); }
+function closePlannedPayment() { $('planned-payment-mask').classList.add('hidden'); }
+
+function plannedCardOptions(selectedId) {
+  return '<option value="">銀行／現金</option>' + S.creditCards.map((card) => `<option value="${escapeHtml(card.id)}"${card.id === selectedId ? ' selected' : ''}>${escapeHtml(card.name)}${card.last4 ? ` · ${escapeHtml(card.last4)}` : ''}</option>`).join('');
+}
+
+function openPlannedExpenseForm(planId) {
+  const plan = planId ? S.plannedExpenses.find((item) => item.id === planId && !item.paidAt) : null;
+  $('planned-form').reset();
+  $('planned-form-id').value = plan ? plan.id : '';
+  $('planned-form-title').textContent = plan ? '編輯預備金任務' : '新增預備金任務';
+  $('planned-delete').classList.toggle('hidden', !plan);
+  $('planned-card').innerHTML = plannedCardOptions(plan && plan.cardId);
+  $('planned-name').value = plan ? plan.name : '';
+  $('planned-target').value = plan ? Number(plan.target || 0) : '';
+  $('planned-due-date').value = plan ? plan.dueDate : '';
+  $('planned-initial').value = plan ? Number(plan.initialReserved || 0) : '';
+  $('planned-category').value = plan && CATS.some((item) => item.id === plan.cat) ? plan.cat : 'bills';
+  switchScreen('stats'); switchStatsView('commitments');
+  $('planned-form-mask').classList.remove('hidden');
+  setTimeout(() => $('planned-name').focus(), 80);
+}
+
+function savePlannedExpenseForm(event) {
+  event.preventDefault();
+  const id = $('planned-form-id').value;
+  const existing = id ? S.plannedExpenses.find((item) => item.id === id && !item.paidAt) : null;
+  const data = {
+    name: $('planned-name').value.trim().slice(0, 32),
+    target: Math.round((Number($('planned-target').value) + Number.EPSILON) * 100) / 100,
+    dueDate: $('planned-due-date').value,
+    initialReserved: Math.round((Number($('planned-initial').value || 0) + Number.EPSILON) * 100) / 100,
+    cat: $('planned-category').value,
+    cardId: $('planned-card').value || null,
+  };
+  const existingAllocated = existing ? (S.plannedExpenseAllocations || []).filter((entry) => entry.planId === existing.id).reduce((sum, entry) => sum + Number(entry.amount || 0), 0) : 0;
+  if (!data.name || !(data.target > 0) || !/^\d{4}-\d{2}-\d{2}$/.test(data.dueDate)
+      || (!existing && data.dueDate < todayKey()) || data.initialReserved < 0 || data.initialReserved + existingAllocated > data.target
+      || !CATS.some((item) => item.id === data.cat) || (data.cardId && !S.creditCards.some((card) => card.id === data.cardId))) {
+    toast(data.initialReserved + existingAllocated > data.target ? '已預留總額唔可以高過預計總額' : '請檢查預備金任務資料');
+    return;
+  }
+  let rewarded = false;
+  if (existing) Object.assign(existing, data, { updatedAt: Date.now() });
+  else {
+    S.plannedExpenses.push({ id: `reserve-${Date.now()}-${Math.floor(Math.random() * 10000)}`, ...data, createdAt: Date.now(), paidAt: null });
+    rewarded = claimDailyReward('planned-expense-create', 10, 15);
+  }
+  save(); closePlannedExpenseForm(); renderAll();
+  toast(existing ? '預備金任務已更新' : `預備金地圖已加入 ${data.name}${rewarded ? ' · +10G · +15 XP' : ''}`);
+}
+
+function deletePlannedExpense() {
+  const plan = S.plannedExpenses.find((item) => item.id === $('planned-form-id').value && !item.paidAt);
+  if (!plan) return;
+  closePlannedExpenseForm();
+  popup('刪除呢個預備金任務？', `<p class="confirm-copy"><b>${escapeHtml(plan.name)} · ${fmt(plan.target)}</b><br>任務同預留足印會一齊移除；因為預留只係分配，總存款同實際支出都唔會改變。</p>`, {
+    confirmLabel: '確認刪除',
+    cancelLabel: '保留任務',
+    onConfirm: () => {
+      const allocationDates = S.plannedExpenseAllocations
+        .filter((entry) => entry.planId === plan.id)
+        .map((entry) => entry.dateKey);
+      S.plannedExpenses = S.plannedExpenses.filter((item) => item.id !== plan.id);
+      S.plannedExpenseAllocations = S.plannedExpenseAllocations.filter((entry) => entry.planId !== plan.id);
+      allocationDates.forEach(invalidateReview);
+      save(); renderAll(); toast('預備金任務已刪除');
+    },
+  });
+}
+
+function openPlannedAllocation(planId) {
+  const plan = S.plannedExpenses.find((item) => item.id === planId && !item.paidAt);
+  if (!plan) return;
+  const progress = plannedProgress(plan);
+  if (progress.remaining <= 0) { openPlannedPayment(plan.id); return; }
+  $('planned-allocation-form').reset();
+  $('planned-allocation-id').value = plan.id;
+  $('planned-allocation-title').textContent = `預留「${plan.name}」`;
+  $('planned-allocation-status').textContent = `已圈起 ${fmt(progress.reserved)}`;
+  $('planned-allocation-remaining').textContent = fmt(progress.remaining);
+  $('planned-allocation-amount').max = progress.remaining;
+  $('planned-allocation-amount').value = Math.min(progress.remaining, progress.monthlySuggested || progress.remaining);
+  $('planned-allocation-mask').classList.remove('hidden');
+  setTimeout(() => $('planned-allocation-amount').focus(), 80);
+}
+
+function savePlannedAllocation(event) {
+  event.preventDefault();
+  const plan = S.plannedExpenses.find((item) => item.id === $('planned-allocation-id').value && !item.paidAt);
+  const amount = Math.round((Number($('planned-allocation-amount').value) + Number.EPSILON) * 100) / 100;
+  const progress = plan ? plannedProgress(plan) : null;
+  if (!plan || !(amount > 0) || amount > progress.remaining) { toast('預留金額唔可以高過尚欠目標'); return; }
+  const dateKey = todayKey();
+  S.plannedExpenseAllocations.push({ id: `reserve-add-${Date.now()}-${Math.floor(Math.random() * 10000)}`, planId: plan.id, amount, dateKey, ts: Date.now() });
+  touchStreak(); invalidateReview(dateKey);
+  const rewarded = claimDailyReward('planned-expense-allocation', 0, 15);
+  save(); closePlannedAllocation(); renderAll(); softVibrate([8, 22, 8]);
+  toast(`已為 ${plan.name} 圈起 ${fmt(amount)}${rewarded ? ' · +15 XP' : ''}`);
+}
+
+function removePlannedAllocation(allocationId) {
+  const entry = S.plannedExpenseAllocations.find((item) => item.id === allocationId);
+  const plan = entry && S.plannedExpenses.find((item) => item.id === entry.planId);
+  if (!entry || !plan || plan.paidAt) return;
+  popup('刪除呢次預留？', `<p class="confirm-copy"><b>${escapeHtml(plan.name)} · ${fmt(entry.amount)}</b><br>只會移除分配足印，總存款同實際支出不受影響。</p>`, {
+    confirmLabel: '確認刪除', cancelLabel: '保留預留',
+    onConfirm: () => {
+      S.plannedExpenseAllocations = S.plannedExpenseAllocations.filter((item) => item.id !== entry.id);
+      invalidateReview(entry.dateKey); save(); renderAll(); toast('預留足印已刪除');
+    },
+  });
+}
+
+function openPlannedPayment(planId) {
+  const plan = S.plannedExpenses.find((item) => item.id === planId && !item.paidAt);
+  if (!plan) { toast('呢個預備金任務已經結算'); return; }
+  const progress = plannedProgress(plan);
+  $('planned-payment-form').reset();
+  $('planned-payment-id').value = plan.id;
+  $('planned-payment-title').textContent = plan.name;
+  $('planned-payment-status').textContent = `已預留 ${fmt(progress.reserved)} · ${progress.remaining > 0 ? `仲差 ${fmt(progress.remaining)}` : '資金已齊'}`;
+  $('planned-payment-reserved').textContent = fmt(progress.target);
+  $('planned-payment-amount').value = progress.target;
+  $('planned-payment-date').value = todayKey();
+  $('planned-payment-date').max = todayKey();
+  $('planned-payment-card').innerHTML = plannedCardOptions(plan.cardId);
+  $('planned-payment-note').textContent = `${progress.remaining > 0 ? `目前仲有 ${fmt(progress.remaining)} 未預留；仍然可以按實際情況付款。` : '預備金已齊。'} 確認後會寫入固定／預留支出，但唔扣日常安心額。`;
+  $('planned-payment-mask').classList.remove('hidden');
+  setTimeout(() => $('planned-payment-amount').focus(), 80);
+}
+
+function savePlannedPayment(event) {
+  event.preventDefault();
+  const plan = S.plannedExpenses.find((item) => item.id === $('planned-payment-id').value && !item.paidAt);
+  const amount = Math.round((Number($('planned-payment-amount').value) + Number.EPSILON) * 100) / 100;
+  const dateKey = $('planned-payment-date').value;
+  const cardId = $('planned-payment-card').value || null;
+  if (!plan || !(amount > 0) || !/^\d{4}-\d{2}-\d{2}$/.test(dateKey) || dateKey > todayKey() || (cardId && !S.creditCards.some((card) => card.id === cardId))) {
+    toast('請檢查實際付款資料'); return;
+  }
+  const now = Date.now();
+  const expenseId = now + Math.floor(Math.random() * 1000);
+  S.expenses.push({
+    id: expenseId, ts: now, dateKey, cat: plan.cat || 'bills', amount, budgetImpact: 'committed',
+    merchant: plan.name, source: 'planned-expense', plannedExpenseId: plan.id, cardId,
+  });
+  if (cardId) {
+    const card = S.creditCards.find((item) => item.id === cardId);
+    card.currentBalance = Math.round(((Number(card.currentBalance || 0) + amount) + Number.EPSILON) * 100) / 100;
+    normalizeCreditStatement(card);
+  }
+  Object.assign(plan, { paidAt: now, paidDateKey: dateKey, paidAmount: amount, paymentExpenseId: expenseId, paidCardId: cardId });
+  if (dateKey === todayKey()) touchStreak();
+  invalidateReview(dateKey);
+  const rewarded = dateKey === todayKey() && claimDailyReward('planned-expense-payment', 20, 20);
+  save(); closePlannedPayment(); renderAll(); softVibrate([10, 25, 10]);
+  toast(`${plan.name} 已結算${cardId ? ' · 卡片結欠已同步' : ''}${rewarded ? ' · +20G · +20 XP' : ''}`);
 }
 
 function closeCommitmentForm() {
@@ -4475,6 +4772,9 @@ function closeTopOverlay() {
   if (!$('goal-contribution-mask').classList.contains('hidden')) { closeGoalContribution(); return true; }
   if (!$('goal-form-mask').classList.contains('hidden')) { closeGoalForm(); return true; }
   if (!$('cashflow-form-mask').classList.contains('hidden')) { closeCashflowForm(); return true; }
+  if (!$('planned-payment-mask').classList.contains('hidden')) { closePlannedPayment(); return true; }
+  if (!$('planned-allocation-mask').classList.contains('hidden')) { closePlannedAllocation(); return true; }
+  if (!$('planned-form-mask').classList.contains('hidden')) { closePlannedExpenseForm(); return true; }
   if (!$('commitment-payment-mask').classList.contains('hidden')) { closeCommitmentPayment(); return true; }
   if (!$('commitment-form-mask').classList.contains('hidden')) { closeCommitmentForm(); return true; }
   if (!$('card-payment-mask').classList.contains('hidden')) { closeCardPaymentForm(); return true; }
@@ -4564,6 +4864,20 @@ function init() {
   $('entry-edit-cancel').onclick = closeEntryEdit;
   $('entry-edit-mask').onclick = (event) => { if (event.target === $('entry-edit-mask')) closeEntryEdit(); };
   $('btn-commitment-add').onclick = () => openCommitmentForm();
+  $('btn-planned-add').onclick = () => openPlannedExpenseForm();
+  $('planned-form').onsubmit = savePlannedExpenseForm;
+  $('planned-form-close').onclick = closePlannedExpenseForm;
+  $('planned-form-cancel').onclick = closePlannedExpenseForm;
+  $('planned-delete').onclick = deletePlannedExpense;
+  $('planned-form-mask').onclick = (event) => { if (event.target === $('planned-form-mask')) closePlannedExpenseForm(); };
+  $('planned-allocation-form').onsubmit = savePlannedAllocation;
+  $('planned-allocation-close').onclick = closePlannedAllocation;
+  $('planned-allocation-cancel').onclick = closePlannedAllocation;
+  $('planned-allocation-mask').onclick = (event) => { if (event.target === $('planned-allocation-mask')) closePlannedAllocation(); };
+  $('planned-payment-form').onsubmit = savePlannedPayment;
+  $('planned-payment-close').onclick = closePlannedPayment;
+  $('planned-payment-cancel').onclick = closePlannedPayment;
+  $('planned-payment-mask').onclick = (event) => { if (event.target === $('planned-payment-mask')) closePlannedPayment(); };
   $('btn-card-add').onclick = () => openCardForm();
   $('btn-vault').onclick = openVault;
   $('vault-close').onclick = closeVault;

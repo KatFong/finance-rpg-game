@@ -317,6 +317,7 @@
     const incomes = (data.incomes || []).filter(inMonth);
     const cardAdjustments = (data.cardAdjustments || []).filter(inMonth);
     const goalContributions = (data.goalContributions || []).filter(inMonth);
+    const reserveAllocations = (data.reserveAllocations || []).filter(inMonth);
     const cardPayments = (data.cardPayments || []).filter(inMonth);
     const debtPayments = (data.debtPayments || []).filter(inMonth);
     const activityDateKeys = (data.activityDateKeys || []).filter((dateKey) => monthKey && String(dateKey || '').startsWith(monthKey));
@@ -333,6 +334,7 @@
     const totalSpent = roundMoney(dailySpent + committedSpent + cardCosts);
     const net = roundMoney(income - totalSpent);
     const goalSaved = roundMoney(goalContributions.reduce((sum, entry) => sum + Math.max(0, Number(entry.amount) || 0), 0));
+    const reserveSaved = roundMoney(reserveAllocations.reduce((sum, entry) => sum + Math.max(0, Number(entry.amount) || 0), 0));
     const transfers = roundMoney(
       cardPayments.reduce((sum, entry) => sum + Math.max(0, Number(entry.amount) || 0), 0)
       + debtPayments.reduce((sum, entry) => sum + Math.max(0, Number(entry.amount) || 0), 0),
@@ -347,7 +349,7 @@
       .filter(([, amount]) => amount > 0)
       .sort((a, b) => b[1] - a[1])[0] || null;
     const activeDays = new Set([
-      ...expenses, ...incomes, ...cardAdjustments, ...goalContributions, ...cardPayments, ...debtPayments,
+      ...expenses, ...incomes, ...cardAdjustments, ...goalContributions, ...reserveAllocations, ...cardPayments, ...debtPayments,
     ].map((entry) => entry.dateKey).filter(Boolean).concat(activityDateKeys)).size;
     let recommendedFocus = 'goal';
     if (net < 0 || (income === 0 && totalSpent > 0)) recommendedFocus = 'cashflow';
@@ -362,13 +364,50 @@
       totalSpent,
       net,
       goalSaved,
+      reserveSaved,
       transfers,
       activeDays,
-      recordCount: expenses.length + incomes.length + cardAdjustments.length + goalContributions.length + cardPayments.length + debtPayments.length,
+      recordCount: expenses.length + incomes.length + cardAdjustments.length + goalContributions.length + reserveAllocations.length + cardPayments.length + debtPayments.length,
       topCategory: topCategoryEntry ? topCategoryEntry[0] : null,
       topCategoryAmount: topCategoryEntry ? topCategoryEntry[1] : 0,
       recommendedFocus,
       isEmpty: activeDays === 0,
+    };
+  }
+
+  function plannedExpenseProgress(plan, allocations, todayKey) {
+    const target = roundMoney(Math.max(0, Number(plan && plan.target) || 0));
+    const openingReserved = roundMoney(Math.max(0, Number(plan && plan.initialReserved) || 0));
+    const added = roundMoney((allocations || []).reduce((sum, entry) => (
+      entry && plan && entry.planId === plan.id ? sum + Math.max(0, Number(entry.amount) || 0) : sum
+    ), 0));
+    const reserved = roundMoney(openingReserved + added);
+    const remaining = roundMoney(Math.max(0, target - reserved));
+    const today = dayOrdinal(todayKey);
+    const due = dayOrdinal(plan && plan.dueDate);
+    const daysLeft = today == null || due == null ? null : due - today;
+    const periodsLeft = daysLeft == null ? null : Math.max(1, Math.ceil((Math.max(0, daysLeft) + 1) / 30));
+    const monthlySuggested = remaining > 0 && periodsLeft
+      ? Math.ceil((remaining / periodsLeft) * 100) / 100
+      : 0;
+    let status = 'building';
+    if (plan && plan.paidAt) status = 'paid';
+    else if (!(target > 0) || due == null) status = 'invalid';
+    else if (remaining === 0) status = 'ready';
+    else if (daysLeft < 0) status = 'overdue';
+    else if (daysLeft <= 30) status = 'due_soon';
+    return {
+      target,
+      openingReserved,
+      added,
+      reserved,
+      remaining,
+      progressPct: target > 0 ? clamp((reserved / target) * 100, 0, 100) : 0,
+      daysLeft,
+      periodsLeft,
+      monthlySuggested: roundMoney(monthlySuggested),
+      status,
+      valid: target > 0 && due != null,
     };
   }
 
@@ -437,6 +476,7 @@
     monthlyCommitmentSchedule, creditStatementModel, applyCreditCardPayment, reverseCreditCardPayment,
     applyCreditCardAdjustment, reverseCreditCardAdjustment,
     monthlyReviewModel,
+    plannedExpenseProgress,
     installmentQuote, purchaseEncounter,
   };
 });

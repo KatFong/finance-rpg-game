@@ -19,6 +19,7 @@ const {
   applyCreditCardAdjustment,
   reverseCreditCardAdjustment,
   monthlyReviewModel,
+  plannedExpenseProgress,
   installmentQuote,
   purchaseEncounter,
 } = require('../gameplay.js');
@@ -292,6 +293,7 @@ test('builds a monthly review without counting repayments as spending twice', ()
     cardPayments: [{ dateKey: '2026-06-06', amount: 900 }],
     debtPayments: [{ dateKey: '2026-06-07', amount: 400 }],
     goalContributions: [{ dateKey: '2026-06-08', amount: 500 }],
+    reserveAllocations: [{ dateKey: '2026-06-09', amount: 300 }],
   });
   assert.equal(result.dailySpent, 300);
   assert.equal(result.committedSpent, 1200);
@@ -300,7 +302,8 @@ test('builds a monthly review without counting repayments as spending twice', ()
   assert.equal(result.net, 3450);
   assert.equal(result.transfers, 1300);
   assert.equal(result.goalSaved, 500);
-  assert.equal(result.activeDays, 8);
+  assert.equal(result.reserveSaved, 300);
+  assert.equal(result.activeDays, 9);
   assert.equal(result.topCategory, 'bills');
   assert.equal(result.recommendedFocus, 'cards');
 });
@@ -314,6 +317,38 @@ test('recommends protecting cash flow when a reviewed month has a gap', () => {
   assert.equal(result.net, -200);
   assert.equal(result.recommendedFocus, 'cashflow');
   assert.equal(result.recordCount, 2);
+});
+
+test('turns an irregular future bill into a calm monthly reserve pace', () => {
+  const plan = { id: 'insurance', target: 12000, initialReserved: 2000, dueDate: '2026-12-31' };
+  const result = plannedExpenseProgress(plan, [
+    { planId: 'insurance', amount: 4000 },
+    { planId: 'other', amount: 9999 },
+  ], '2026-07-19');
+  assert.equal(result.reserved, 6000);
+  assert.equal(result.remaining, 6000);
+  assert.equal(result.periodsLeft, 6);
+  assert.equal(result.monthlySuggested, 1000);
+  assert.equal(result.status, 'building');
+  assert.equal(result.progressPct, 50);
+});
+
+test('keeps a missed reserve task visible without calling it a failure', () => {
+  const result = plannedExpenseProgress(
+    { id: 'repair', target: 5000, initialReserved: 1500, dueDate: '2026-06-30' },
+    [],
+    '2026-07-19',
+  );
+  assert.equal(result.status, 'overdue');
+  assert.equal(result.daysLeft, -19);
+  assert.equal(result.remaining, 3500);
+  assert.equal(result.monthlySuggested, 3500);
+});
+
+test('marks a funded reserve ready and preserves paid history', () => {
+  const plan = { id: 'tax', target: 3000, initialReserved: 1000, dueDate: '2026-08-01' };
+  assert.equal(plannedExpenseProgress(plan, [{ planId: 'tax', amount: 2000 }], '2026-07-19').status, 'ready');
+  assert.equal(plannedExpenseProgress({ ...plan, paidAt: 123 }, [], '2026-07-19').status, 'paid');
 });
 
 test('shows when a daily purchase needs a funding plan', () => {

@@ -8,8 +8,9 @@
 <meta name="theme-color" content="#79cbd7">
 <title>理財勇者</title>
 <link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="assets/hero.png">
 <link rel="apple-touch-icon" href="assets/hero.png">
-<link rel="stylesheet" href="style.css?v=64">
+<link rel="stylesheet" href="style.css?v=65">
 </head>
 <body data-screen="home">
 
@@ -233,6 +234,9 @@
     <div class="commitment-overview" id="commitment-overview"></div>
     <div class="commitment-priority" id="commitment-priority"></div>
     <div class="commitment-list" id="commitment-list"></div>
+    <div class="section-line reserve-section-line"><div><span class="section-kicker">預備金地圖</span><h3 class="sec-sub">非每月大額支出</h3></div><button class="btn small primary" id="btn-planned-add"><span class="icon" data-icon="plus"></span>新增預備金</button></div>
+    <div class="reserve-overview" id="reserve-overview"></div>
+    <div class="reserve-list" id="reserve-list"></div>
   </section>
   <section class="stats-view" id="stats-cards" data-stats-panel="cards">
     <div class="section-line"><h3 class="sec-sub">信用卡迷宮</h3><button class="btn small primary" id="btn-card-add"><span class="icon" data-icon="plus"></span>新增信用卡</button></div>
@@ -419,6 +423,79 @@
     <div class="form-sheet-actions">
       <button class="btn ghost" id="cashflow-form-cancel" type="button">取消</button>
       <button class="btn primary" type="submit">更新航線</button>
+    </div>
+  </form>
+</div>
+
+<!-- ===== 非每月預備金表格 ===== -->
+<div class="sheet-mask hidden" id="planned-form-mask">
+  <form class="sheet account-sheet" id="planned-form" role="dialog" aria-modal="true" aria-labelledby="planned-form-title">
+    <div class="sheet-handle"></div>
+    <div class="form-sheet-head">
+      <div><span>預備金地圖</span><h3 id="planned-form-title">新增預備金任務</h3></div>
+      <div class="form-head-actions">
+        <button class="icon-btn hidden" id="planned-delete" type="button" aria-label="刪除預備金任務" title="刪除"><span class="icon" data-icon="trash"></span></button>
+        <button class="icon-btn" id="planned-form-close" type="button" aria-label="關閉預備金表格" title="關閉"><span class="icon" data-icon="close"></span></button>
+      </div>
+    </div>
+    <input id="planned-form-id" type="hidden">
+    <p class="form-note reserve-form-intro">適合年費、保費、稅款、醫療、維修等已知會發生但唔係每月繳付嘅支出。</p>
+    <div class="account-form-grid">
+      <label class="full"><span>任務名稱</span><input id="planned-name" maxlength="32" placeholder="例如：年度保險、冷氣維修" required></label>
+      <label><span>預計總額</span><input id="planned-target" type="number" inputmode="decimal" min="0.01" step="0.01" placeholder="12000" required></label>
+      <label><span>預計付款日</span><input id="planned-due-date" type="date" required></label>
+      <label><span>已經預留</span><input id="planned-initial" type="number" inputmode="decimal" min="0" step="0.01" placeholder="0"></label>
+      <label><span>支出分類</span><select id="planned-category"><option value="bills">帳單</option><option value="transport">交通</option><option value="shopping">購物</option><option value="food">餐飲／超市</option><option value="fun">娛樂</option><option value="other">其他</option></select></label>
+      <label class="full"><span>預設付款位置 <small>選信用卡時，付款確認後先會增加卡片結欠</small></span><select id="planned-card"><option value="">銀行／現金</option></select></label>
+    </div>
+    <p class="form-note">建立任務同預留資金都唔係消費；只有確認實際付款先會寫入固定／預留支出。</p>
+    <div class="form-sheet-actions">
+      <button class="btn ghost" id="planned-form-cancel" type="button">取消</button>
+      <button class="btn primary" type="submit">儲存預備金任務</button>
+    </div>
+  </form>
+</div>
+
+<!-- ===== 預留資金 ===== -->
+<div class="sheet-mask hidden" id="planned-allocation-mask">
+  <form class="sheet account-sheet" id="planned-allocation-form" role="dialog" aria-modal="true" aria-labelledby="planned-allocation-title">
+    <div class="sheet-handle"></div>
+    <div class="form-sheet-head">
+      <div><span>補給行動</span><h3 id="planned-allocation-title">預留資金</h3></div>
+      <button class="icon-btn" id="planned-allocation-close" type="button" aria-label="關閉預留資金表格" title="關閉"><span class="icon" data-icon="close"></span></button>
+    </div>
+    <input id="planned-allocation-id" type="hidden">
+    <div class="payment-balance"><span id="planned-allocation-status">尚待預留</span><b id="planned-allocation-remaining">$0</b></div>
+    <div class="account-form-grid payment-form-grid">
+      <label class="full"><span>今次圈起金額</span><input id="planned-allocation-amount" type="number" inputmode="decimal" min="0.01" step="0.01" required></label>
+    </div>
+    <p class="form-note">只係將現有資金指定畀呢項支出，唔會當成消費、唔會改總存款，亦唔會扣日常安心額。</p>
+    <div class="form-sheet-actions">
+      <button class="btn ghost" id="planned-allocation-cancel" type="button">取消</button>
+      <button class="btn primary" type="submit">確認預留</button>
+    </div>
+  </form>
+</div>
+
+<!-- ===== 預備金實際付款 ===== -->
+<div class="sheet-mask hidden" id="planned-payment-mask">
+  <form class="sheet account-sheet" id="planned-payment-form" role="dialog" aria-modal="true" aria-labelledby="planned-payment-title">
+    <div class="sheet-handle"></div>
+    <div class="form-sheet-head">
+      <div><span>任務結算</span><h3 id="planned-payment-title">確認實際付款</h3></div>
+      <button class="icon-btn" id="planned-payment-close" type="button" aria-label="關閉預備金付款表格" title="關閉"><span class="icon" data-icon="close"></span></button>
+    </div>
+    <input id="planned-payment-id" type="hidden">
+    <div class="payment-balance"><span id="planned-payment-status">已預留</span><b id="planned-payment-reserved">$0</b></div>
+    <div class="account-form-grid payment-form-grid">
+      <label class="full"><span>實際付款金額</span><input id="planned-payment-amount" type="number" inputmode="decimal" min="0.01" step="0.01" required></label>
+      <label><span>付款日期</span><input id="planned-payment-date" type="date" required></label>
+      <label><span>付款位置</span><select id="planned-payment-card"><option value="">銀行／現金</option></select></label>
+    </div>
+    <p class="form-note" id="planned-payment-note">實際付款會寫入固定／預留支出，但唔會扣減日常安心額。</p>
+    <div class="form-sheet-actions">
+      <button class="btn ghost" id="planned-payment-cancel" type="button">取消</button>
+      <button class="btn primary" type="submit">確認已付款</button>
     </div>
   </form>
 </div>
@@ -869,11 +946,11 @@
 <div id="toast" class="hidden" role="status" aria-live="polite" aria-atomic="true"></div>
 
 <script>window.FRPG_CONFIG = { advisorApiUrl: '' };</script>
-<script src="vault.js?v=64"></script>
-<script src="gameplay.js?v=64"></script>
-<script src="cashflow.js?v=64"></script>
-<script src="ledger.js?v=64"></script>
-<script src="advisor.js?v=64"></script>
-<script src="app.js?v=64"></script>
+<script src="vault.js?v=65"></script>
+<script src="gameplay.js?v=65"></script>
+<script src="cashflow.js?v=65"></script>
+<script src="ledger.js?v=65"></script>
+<script src="advisor.js?v=65"></script>
+<script src="app.js?v=65"></script>
 </body>
 </html>
