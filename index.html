@@ -9,7 +9,7 @@
 <title>理財勇者</title>
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="assets/hero.png">
-<link rel="stylesheet" href="style.css?v=63">
+<link rel="stylesheet" href="style.css?v=64">
 </head>
 <body data-screen="home">
 
@@ -197,6 +197,14 @@
     <button role="tab" aria-selected="false" data-stats-view="history">紀錄</button>
   </div>
   <section class="stats-view active" id="stats-overview" data-stats-panel="overview">
+    <section class="month-campfire-card" id="month-campfire-card" aria-labelledby="month-campfire-title">
+      <div class="month-campfire-copy">
+        <span id="month-campfire-kicker">月結營火</span>
+        <h3 id="month-campfire-title">整理上一段旅程</h3>
+        <p id="month-campfire-status"></p>
+      </div>
+      <button class="btn small primary" id="btn-month-review" type="button">開始月結</button>
+    </section>
     <section class="cashflow-route" id="cashflow-route">
       <div class="cashflow-head"><div><span>現金流航線</span><h3 class="sec-sub">捱到下次補給嗎？</h3></div><button class="btn small ghost" id="btn-cashflow-edit"><span class="icon" data-icon="edit"></span>校準</button></div>
       <div id="cashflow-content"></div>
@@ -837,14 +845,35 @@
   </div>
 </div>
 
+<!-- ===== 月結營火 ===== -->
+<div class="month-review-mask hidden" id="month-review-mask">
+  <section class="month-review-scene" role="dialog" aria-modal="true" aria-labelledby="month-review-title">
+    <button class="icon-btn month-review-close" id="month-review-close" type="button" aria-label="離開月結營火" title="關閉"><span class="icon" data-icon="close"></span></button>
+    <div class="month-review-stage">
+      <div class="month-review-chapter"><span>月結營火</span><b id="month-review-month">旅程整理</b></div>
+      <img src="assets/strategist.png" alt="錢錢軍師" class="month-review-npc">
+      <div class="month-review-metrics hidden" id="month-review-metrics"></div>
+    </div>
+    <div class="month-review-dialogue">
+      <div class="month-review-dialogue-head">
+        <div><span>錢錢軍師</span><h3 id="month-review-title">一齊望清楚呢段旅程</h3></div>
+        <b id="month-review-progress">1 / 5</b>
+      </div>
+      <p id="month-review-text" aria-live="polite"></p>
+      <div class="month-focus-options hidden" id="month-focus-options" role="group" aria-label="選擇下月唯一策略"></div>
+      <button class="btn primary big" id="month-review-next" type="button">下一句</button>
+    </div>
+  </section>
+</div>
+
 <div id="toast" class="hidden" role="status" aria-live="polite" aria-atomic="true"></div>
 
 <script>window.FRPG_CONFIG = { advisorApiUrl: '' };</script>
-<script src="vault.js?v=63"></script>
-<script src="gameplay.js?v=63"></script>
-<script src="cashflow.js?v=63"></script>
-<script src="ledger.js?v=63"></script>
-<script src="advisor.js?v=63"></script>
-<script src="app.js?v=63"></script>
+<script src="vault.js?v=64"></script>
+<script src="gameplay.js?v=64"></script>
+<script src="cashflow.js?v=64"></script>
+<script src="ledger.js?v=64"></script>
+<script src="advisor.js?v=64"></script>
+<script src="app.js?v=64"></script>
 </body>
 </html>

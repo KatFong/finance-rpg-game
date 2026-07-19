@@ -73,6 +73,7 @@ const defaults = () => ({
   commitmentSkips: [],     // {id, commitmentId, monthKey, createdAt}
   decisionEncounters: [],  // {id, name, amount, source, intent, status, revisitAt, createdAt}
   cashflowPlan: null,      // {balance, asOfDate, capturedAt, nextIncomeDate, nextIncomeAmount, buffer}
+  monthReviews: {},        // monthKey -> {focusId, completedAt, rewardClaimed}
   lastBackupAt: null,
   gold: 0, xp: 0, level: 1,
   streak: 0, lastLogDate: null, // streak 保留舊欄位名，現代表累積同行日
@@ -102,6 +103,7 @@ function load() {
       state.decisionEncounters = Array.isArray(state.decisionEncounters) ? state.decisionEncounters : [];
       state.cardAdjustments = Array.isArray(state.cardAdjustments) ? state.cardAdjustments : [];
       state.cashflowPlan = state.cashflowPlan && typeof state.cashflowPlan === 'object' ? state.cashflowPlan : null;
+      state.monthReviews = state.monthReviews && typeof state.monthReviews === 'object' ? state.monthReviews : {};
       return state;
     }
   } catch (e) {}
@@ -115,6 +117,48 @@ function keyOf(d) { return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.
 function todayKey() { return keyOf(new Date()); }
 function yesterdayKey() { const d = new Date(); d.setDate(d.getDate() - 1); return keyOf(d); }
 function monthKey() { const d = new Date(); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}`; }
+function monthLabel(value) {
+  const match = String(value || '').match(/^(\d{4})-(\d{2})$/);
+  if (!match) return '呢個月';
+  return `${Number(match[1])} 年 ${Number(match[2])} 月`;
+}
+function monthlyReviewFor(value) {
+  return FinanceGameplay.monthlyReviewModel({
+    monthKey: value,
+    expenses: S.expenses.map((entry) => ({
+      ...entry,
+      budgetImpact: expenseBudgetImpact(entry),
+      category: entry.cat || 'other',
+    })),
+    incomes: S.incomes || [],
+    cardAdjustments: S.cardAdjustments || [],
+    goalContributions: S.goalContributions || [],
+    cardPayments: S.cardPayments || [],
+    debtPayments: (S.repayments || []).map((entry) => ({ ...entry, dateKey: entry.dateKey || keyOf(new Date(entry.ts)) })),
+    activityDateKeys: Object.keys(S.dayMeta || {}).filter((dateKey) => {
+      const day = S.dayMeta[dateKey] || {};
+      return day.noSpend || day.reviewed;
+    }),
+  });
+}
+function monthlyReviewKeys() {
+  const keys = new Set();
+  const add = (dateKey) => {
+    const value = String(dateKey || '').slice(0, 7);
+    if (/^\d{4}-\d{2}$/.test(value) && value < monthKey()) keys.add(value);
+  };
+  [
+    ...(S.expenses || []), ...(S.incomes || []), ...(S.cardAdjustments || []),
+    ...(S.goalContributions || []), ...(S.cardPayments || []),
+  ].forEach((entry) => add(entry.dateKey));
+  (S.repayments || []).forEach((entry) => add(entry.dateKey || keyOf(new Date(entry.ts))));
+  Object.keys(S.dayMeta || {}).forEach(add);
+  return [...keys].filter((value) => !monthlyReviewFor(value).isEmpty).sort((a, b) => b.localeCompare(a));
+}
+function pendingMonthReview() {
+  const value = monthlyReviewKeys().find((key) => !(S.monthReviews[key] && S.monthReviews[key].completedAt));
+  return value ? { monthKey: value, model: monthlyReviewFor(value) } : null;
+}
 function commitmentSchedule(mk = monthKey()) {
   return FinanceGameplay.monthlyCommitmentSchedule(S.commitments, S.expenses, S.commitmentSkips, mk, todayKey());
 }
@@ -578,8 +622,9 @@ function renderSceneDialogue(force) {
   const pendingDecision = dueDecision();
   const billReminder = commitmentReminder(true);
   const cardReminder = creditStatementReminder(true);
+  const monthReview = pendingMonthReview();
   const cashflow = cashflowModel();
-  const key = [todayKey(), S.heroName, pace.safe, bossMaxHp(), spent, logsToday(), bossDamage(), S.boss.claimed, S.lastLogDate, objective.label, cardReminder && cardReminder.statement.statementDue, cashflow.status, cashflow.gapAmount].join('|');
+  const key = [todayKey(), S.heroName, pace.safe, bossMaxHp(), spent, logsToday(), bossDamage(), S.boss.claimed, S.lastLogDate, objective.label, cardReminder && cardReminder.statement.statementDue, monthReview && monthReview.monthKey, cashflow.status, cashflow.gapAmount].join('|');
   if (!force && activeDialogueKey === key && homeReminder) return;
   activeDialogueKey = key;
 
@@ -598,6 +643,8 @@ function renderSceneDialogue(force) {
     text = `${S.heroName}，${cardReminder.card.name} 今期尚欠 ${fmt(cardReminder.statement.statementDue)}，仲有 ${cardReminder.daysUntil} 日到期。最低還款只係避免漏繳嘅底線；實際利息按發卡行帳單。`;
   } else if (billReminder && billReminder.status === 'upcoming' && objective.label === '查看每月承諾') {
     text = `${S.heroName}，${billReminder.name} 仲有 ${billReminder.daysUntil} 日到期，預計 ${fmt(billReminder.amount)}。我只係提前提你預留，未付款前唔會當成支出。`;
+  } else if (monthReview && objective.label === '完成月結營火') {
+    text = `${S.heroName}，${monthLabel(monthReview.monthKey)}嘅足印已經放到營火邊。我會逐句講清收入、實際支出同轉移；最後由你為下月只留一個策略。空白日唔需要補。`;
   } else if (!active && returning) {
     text = `${period.greeting}，${S.heroName}，歡迎返嚟。唔使補晒之前日子，過去努力亦冇消失；今日記一筆，就可以由而家重新開始。`;
   } else if (!active) {
@@ -1360,6 +1407,211 @@ function reviewToday() {
   });
 }
 
+let activeMonthReview = null;
+let monthReviewTimer = null;
+let monthReviewFinishTyping = null;
+
+function monthReviewCategoryName(categoryId) {
+  if (categoryId === 'card_costs') return '信用卡成本';
+  const category = CATS.find((item) => item.id === categoryId);
+  return category ? category.name : '其他支出';
+}
+
+function monthFocusOption(focusId) {
+  return FinanceGameplay.MONTHLY_FOCUS_OPTIONS.find((item) => item.id === focusId)
+    || FinanceGameplay.MONTHLY_FOCUS_OPTIONS[0];
+}
+
+function monthReviewFrames(model) {
+  const label = monthLabel(model.monthKey);
+  const topCategory = model.topCategory
+    ? `${monthReviewCategoryName(model.topCategory)} ${fmt(model.topCategoryAmount)}`
+    : '未有足夠支出分類';
+  const incomeCaveat = model.income === 0
+    ? ' 呢個月未有已記收入，所以卷軸只反映目前輸入過嘅資料。'
+    : '';
+  const cardCopy = model.cardCosts === 0
+    ? '卡片利息、收費同退款互相抵銷後係 $0。'
+    : model.cardCosts > 0
+      ? `卡片實際成本係 ${fmt(model.cardCosts)}。`
+      : `卡片退款比利息同收費多 ${fmt(Math.abs(model.cardCosts))}。`;
+  const recommended = monthFocusOption(model.recommendedFocus);
+  return [
+    {
+      title: '先看見，不評分',
+      text: `${label}留下咗 ${model.activeDays} 日金流足印。我哋只整理已經看見嘅路，空白日唔需要補，亦唔會令之前努力歸零。`,
+      metrics: false,
+    },
+    {
+      title: '收入與實際支出',
+      text: `已記收入係 ${fmt(model.income)}，淨實際支出係 ${fmt(model.totalSpent)}，已記收支差係 ${fmt(model.net)}。${model.net >= 0 ? '有剩餘只代表呢批已記資料留有空間。' : '出現缺口係提早看見路況，唔係失敗。'}${incomeCaveat}`,
+      metrics: true,
+    },
+    {
+      title: '支出輪廓',
+      text: `日常消費 ${fmt(model.dailySpent)}，固定／預留 ${fmt(model.committedSpent)}；${cardCopy} 今月最大一類足印係 ${topCategory}。還卡同還債 ${fmt(model.transfers)} 只列作資金轉移，冇再當成消費；願望存入係 ${fmt(model.goalSaved)}。`,
+      metrics: true,
+    },
+    {
+      title: '下月只守一件事',
+      text: `按目前足印，我會先建議「${recommended.name}」。你可以揀另一條路；只留一個策略，先容易喺生活忙亂時記得。`,
+      focus: true,
+    },
+    {
+      title: '策略卷軸已寫好',
+      text: '',
+      complete: true,
+    },
+  ];
+}
+
+function closeMonthReview() {
+  clearInterval(monthReviewTimer);
+  monthReviewTimer = null;
+  monthReviewFinishTyping = null;
+  activeMonthReview = null;
+  $('month-review-mask').classList.add('hidden');
+}
+
+function renderMonthReviewMetrics(model) {
+  $('month-review-metrics').innerHTML = `
+    <div><span>已記收入</span><b>${fmt(model.income)}</b></div>
+    <div><span>淨實際支出</span><b>${fmt(model.totalSpent)}</b></div>
+    <div><span>已記收支差</span><b class="${model.net < 0 ? 'warning' : ''}">${fmt(model.net)}</b></div>
+    <div><span>足印日</span><b>${model.activeDays} 日</b></div>`;
+}
+
+function visibleMonthFocusOptions(review) {
+  const all = FinanceGameplay.MONTHLY_FOCUS_OPTIONS;
+  const recommended = monthFocusOption(review.model.recommendedFocus);
+  const selected = review.selectedFocus ? monthFocusOption(review.selectedFocus) : null;
+  const result = [recommended, ...all.filter((item) => item.id !== recommended.id)].slice(0, 3);
+  if (selected && !result.some((item) => item.id === selected.id)) result[result.length - 1] = selected;
+  return result;
+}
+
+function renderMonthFocusOptions() {
+  const box = $('month-focus-options');
+  box.innerHTML = '';
+  if (!activeMonthReview) return;
+  visibleMonthFocusOptions(activeMonthReview).forEach((option) => {
+    const button = document.createElement('button');
+    const selected = activeMonthReview.selectedFocus === option.id;
+    button.type = 'button';
+    button.className = `month-focus-option${selected ? ' active' : ''}`;
+    button.setAttribute('aria-pressed', String(selected));
+    button.innerHTML = `${option.id === activeMonthReview.model.recommendedFocus ? '<span>軍師建議</span>' : ''}<b>${escapeHtml(option.name)}</b><small>${escapeHtml(option.desc)}</small>`;
+    button.onclick = () => {
+      activeMonthReview.selectedFocus = option.id;
+      renderMonthFocusOptions();
+      $('month-review-next').disabled = false;
+      $('month-review-next').textContent = '寫入策略卷軸';
+      softVibrate(6);
+    };
+    box.appendChild(button);
+  });
+}
+
+function renderMonthReviewFrame(immediate = false) {
+  if (!activeMonthReview) return;
+  clearInterval(monthReviewTimer);
+  monthReviewFinishTyping = null;
+  const frames = monthReviewFrames(activeMonthReview.model);
+  const frame = frames[activeMonthReview.frame];
+  const selected = activeMonthReview.selectedFocus ? monthFocusOption(activeMonthReview.selectedFocus) : null;
+  const text = frame.complete
+    ? `下月卷軸只寫低「${selected ? selected.name : monthFocusOption(activeMonthReview.model.recommendedFocus).name}」。呢個係方向，唔係合格線；中途要改路亦可以返嚟重寫。`
+    : frame.text;
+  $('month-review-title').textContent = frame.title;
+  $('month-review-progress').textContent = `${activeMonthReview.frame + 1} / ${frames.length}`;
+  $('month-review-metrics').classList.toggle('hidden', !frame.metrics);
+  $('month-focus-options').classList.toggle('hidden', !frame.focus);
+  if (frame.metrics) renderMonthReviewMetrics(activeMonthReview.model);
+  if (frame.focus) renderMonthFocusOptions();
+  const next = $('month-review-next');
+  next.disabled = Boolean(frame.focus && !activeMonthReview.selectedFocus);
+  next.textContent = frame.complete
+    ? (activeMonthReview.wasCompleted ? '儲存新策略' : '收下月結卷軸')
+    : frame.focus ? (activeMonthReview.selectedFocus ? '寫入策略卷軸' : '先選一個策略') : '下一句';
+  const textEl = $('month-review-text');
+  textEl.textContent = '';
+  const finish = () => {
+    clearInterval(monthReviewTimer);
+    monthReviewTimer = null;
+    textEl.textContent = text;
+    monthReviewFinishTyping = null;
+  };
+  monthReviewFinishTyping = finish;
+  if (immediate || matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    finish();
+    return;
+  }
+  const characters = Array.from(text);
+  let cursor = 0;
+  monthReviewTimer = setInterval(() => {
+    cursor += 1;
+    textEl.textContent = characters.slice(0, cursor).join('');
+    if (cursor >= characters.length) finish();
+  }, 16);
+}
+
+function openMonthReview(reviewMonth) {
+  const model = monthlyReviewFor(reviewMonth);
+  if (!reviewMonth || model.isEmpty || reviewMonth >= monthKey()) {
+    toast('有一個完整月份嘅足印後，月結營火先會開放');
+    return;
+  }
+  const previous = S.monthReviews[reviewMonth] || {};
+  activeMonthReview = {
+    monthKey: reviewMonth,
+    model,
+    frame: 0,
+    selectedFocus: previous.focusId || null,
+    wasCompleted: Boolean(previous.completedAt),
+  };
+  $('month-review-month').textContent = monthLabel(reviewMonth);
+  $('month-review-mask').classList.remove('hidden');
+  renderMonthReviewFrame();
+}
+
+function finishMonthReview() {
+  if (!activeMonthReview || !activeMonthReview.selectedFocus) return;
+  const { monthKey: reviewMonth, selectedFocus, wasCompleted } = activeMonthReview;
+  const previous = S.monthReviews[reviewMonth] || {};
+  const firstReward = !previous.rewardClaimed;
+  S.monthReviews[reviewMonth] = {
+    focusId: selectedFocus,
+    completedAt: previous.completedAt || Date.now(),
+    updatedAt: Date.now(),
+    rewardClaimed: previous.rewardClaimed || firstReward,
+  };
+  closeMonthReview();
+  if (firstReward) {
+    gainGold(60);
+    gainXp(80);
+  }
+  save(); renderAll(); softVibrate([10, 28, 10]);
+  toast(firstReward ? '月結卷軸完成 · +60G · +80 XP' : (wasCompleted ? '下月策略已更新' : '月結卷軸已保存'));
+}
+
+function advanceMonthReview() {
+  if (!activeMonthReview) return;
+  if (monthReviewFinishTyping) {
+    monthReviewFinishTyping();
+    return;
+  }
+  if (activeMonthReview.frame === 3 && !activeMonthReview.selectedFocus) {
+    toast('先揀一個下月策略');
+    return;
+  }
+  if (activeMonthReview.frame >= 4) {
+    finishMonthReview();
+    return;
+  }
+  activeMonthReview.frame += 1;
+  renderMonthReviewFrame();
+}
+
 function startQuest(qid) {
   if (qid === 'q_review') {
     reviewToday();
@@ -1438,6 +1690,7 @@ function buildObjective() {
   const upcomingCardStatement = creditStatementReminder(true);
   const urgentCommitment = commitmentReminder(false);
   const upcomingCommitment = commitmentReminder(true);
+  const monthReview = pendingMonthReview();
   const cashflow = cashflowModel();
   const untaggedExpense = [...S.expenses].reverse().find((item) => item.dateKey === t && expenseBudgetImpact(item) === 'daily' && !item.intent);
   const claimableQuest = QUESTS.find((q) => questProgress(q) >= q.target && !todayMeta.questsClaimed.includes(q.id));
@@ -1529,6 +1782,14 @@ function buildObjective() {
       body: `<b>${escapeHtml(upcomingCommitment.name)}</b> 將於 ${upcomingCommitment.dueDate.slice(5).replace('-', '月')}日到期，預計 ${fmt(upcomingCommitment.amount)}。而家唔使當成今日消費，只要先確認資金已預留。`,
       label: '查看每月承諾',
       action: () => { switchStatsView('commitments'); switchScreen('stats'); },
+    };
+  }
+  if (monthReview) {
+    return {
+      reward: '+60G · +80 XP',
+      body: `<b>${monthLabel(monthReview.monthKey)}</b> 已經有 ${monthReview.model.activeDays} 日金流足印。軍師會逐句整理實際收支，再由你為下月只揀一個策略；空白日唔需要補。`,
+      label: '完成月結營火',
+      action: () => openMonthReview(monthReview.monthKey),
     };
   }
   if (claimableQuest) {
@@ -3031,6 +3292,40 @@ function clearCashflowPlan() {
   });
 }
 
+function renderMonthCampfireCard() {
+  const pending = pendingMonthReview();
+  const keys = monthlyReviewKeys();
+  const latest = keys[0] || null;
+  const button = $('btn-month-review');
+  if (pending) {
+    $('month-campfire-kicker').textContent = `${monthLabel(pending.monthKey)} · 待整理`;
+    $('month-campfire-title').textContent = '營火已經點著';
+    $('month-campfire-status').textContent = `${pending.model.activeDays} 日足印已準備好。逐句望清楚，再為下月只留一個策略。`;
+    button.textContent = '開始月結';
+    button.dataset.monthReview = pending.monthKey;
+    button.classList.remove('hidden');
+    return;
+  }
+  const completed = latest && S.monthReviews[latest] && S.monthReviews[latest].completedAt
+    ? S.monthReviews[latest]
+    : null;
+  if (completed) {
+    const focus = monthFocusOption(completed.focusId);
+    $('month-campfire-kicker').textContent = `${monthLabel(latest)} · 已完成`;
+    $('month-campfire-title').textContent = focus.name;
+    $('month-campfire-status').textContent = '策略係方向，唔係合格線；可以隨時返嚟重溫或改路。';
+    button.textContent = '重溫月結';
+    button.dataset.monthReview = latest;
+    button.classList.remove('hidden');
+    return;
+  }
+  $('month-campfire-kicker').textContent = '月結營火 · 尚未開放';
+  $('month-campfire-title').textContent = '先走完第一個完整月份';
+  $('month-campfire-status').textContent = '有上一個月嘅金流足印後，軍師會逐句陪你整理；空白日唔使補。';
+  button.dataset.monthReview = '';
+  button.classList.add('hidden');
+}
+
 function renderStats() {
   const mk = monthKey();
   const monthExp = S.expenses.filter((e) => e.dateKey.startsWith(mk));
@@ -3047,6 +3342,7 @@ function renderStats() {
   const totalGoalSaved = monthGoalContributions.reduce((sum, entry) => sum + Number(entry.amount || 0), 0);
   const currentGoal = activeGoal();
   const currentGoalProgress = currentGoal ? FinanceGameplay.goalProgress(currentGoal, S.goalContributions) : null;
+  renderMonthCampfireCard();
   renderCashflow();
   renderCommitments();
   let savedTotal = 0;
@@ -4161,6 +4457,7 @@ function bindLogButton() {
 }
 
 function closeTopOverlay() {
+  if (!$('month-review-mask').classList.contains('hidden')) { closeMonthReview(); return true; }
   if (!$('pop-mask').classList.contains('hidden')) {
     if (!$('pop-cancel').classList.contains('hidden')) $('pop-cancel').click();
     else closePopup();
@@ -4227,6 +4524,11 @@ function init() {
   $('dialogue-panel').onclick = (event) => {
     if (event.target === $('dialogue-panel')) closeSceneDialogue();
   };
+  $('btn-month-review').onclick = () => openMonthReview($('btn-month-review').dataset.monthReview);
+  $('month-review-close').onclick = closeMonthReview;
+  $('month-review-next').onclick = advanceMonthReview;
+  $('month-review-text').onclick = () => { if (monthReviewFinishTyping) monthReviewFinishTyping(); };
+  $('month-review-mask').onclick = (event) => { if (event.target === $('month-review-mask')) closeMonthReview(); };
   document.addEventListener('keydown', (event) => {
     if (event.key === 'Escape' && closeTopOverlay()) event.preventDefault();
   });

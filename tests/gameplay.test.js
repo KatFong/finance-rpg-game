@@ -18,6 +18,7 @@ const {
   reverseCreditCardPayment,
   applyCreditCardAdjustment,
   reverseCreditCardAdjustment,
+  monthlyReviewModel,
   installmentQuote,
   purchaseEncounter,
 } = require('../gameplay.js');
@@ -274,6 +275,45 @@ test('does not let a post-statement refund silently rewrite the current statemen
     minimumInvalidated: false,
     minimumBefore: 80,
   });
+});
+
+test('builds a monthly review without counting repayments as spending twice', () => {
+  const result = monthlyReviewModel({
+    monthKey: '2026-06',
+    expenses: [
+      { dateKey: '2026-06-02', amount: 300, budgetImpact: 'daily', category: 'food' },
+      { dateKey: '2026-06-03', amount: 1200, budgetImpact: 'committed', category: 'bills' },
+    ],
+    incomes: [{ dateKey: '2026-06-01', amount: 5000 }],
+    cardAdjustments: [
+      { dateKey: '2026-06-04', type: 'interest', amount: 80 },
+      { dateKey: '2026-06-05', type: 'refund', amount: 30 },
+    ],
+    cardPayments: [{ dateKey: '2026-06-06', amount: 900 }],
+    debtPayments: [{ dateKey: '2026-06-07', amount: 400 }],
+    goalContributions: [{ dateKey: '2026-06-08', amount: 500 }],
+  });
+  assert.equal(result.dailySpent, 300);
+  assert.equal(result.committedSpent, 1200);
+  assert.equal(result.cardCosts, 50);
+  assert.equal(result.totalSpent, 1550);
+  assert.equal(result.net, 3450);
+  assert.equal(result.transfers, 1300);
+  assert.equal(result.goalSaved, 500);
+  assert.equal(result.activeDays, 8);
+  assert.equal(result.topCategory, 'bills');
+  assert.equal(result.recommendedFocus, 'cards');
+});
+
+test('recommends protecting cash flow when a reviewed month has a gap', () => {
+  const result = monthlyReviewModel({
+    monthKey: '2026-06',
+    expenses: [{ dateKey: '2026-06-10', amount: 900, budgetImpact: 'daily', category: 'food' }],
+    incomes: [{ dateKey: '2026-06-01', amount: 700 }],
+  });
+  assert.equal(result.net, -200);
+  assert.equal(result.recommendedFocus, 'cashflow');
+  assert.equal(result.recordCount, 2);
 });
 
 test('shows when a daily purchase needs a funding plan', () => {

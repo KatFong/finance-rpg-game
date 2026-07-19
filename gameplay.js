@@ -37,6 +37,13 @@
     { id: 'freedom', name: '自由基金', art: 'coin', prompt: '為未來選擇保留更多自由' },
   ];
 
+  const MONTHLY_FOCUS_OPTIONS = [
+    { id: 'cashflow', name: '守住現金底線', desc: '先確保下次收入前，錢袋唔會跌穿自己設定嘅底線。' },
+    { id: 'commitments', name: '預留固定承諾', desc: '收入到手先留起帳單同分期，日常額度先會真正安心。' },
+    { id: 'cards', name: '降低卡片成本', desc: '先避免新增循環結欠，並核對實際利息、收費同退款。' },
+    { id: 'goal', name: '推進一個願望', desc: '只揀一個重要目標，用可以持續嘅小額慢慢推進。' },
+  ];
+
   const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
   const roundMoney = (value) => Math.round(((Number(value) || 0) + Number.EPSILON) * 100) / 100;
 
@@ -302,6 +309,69 @@
     };
   }
 
+  function monthlyReviewModel(input) {
+    const data = input || {};
+    const monthKey = /^\d{4}-\d{2}$/.test(String(data.monthKey || '')) ? String(data.monthKey) : '';
+    const inMonth = (entry) => monthKey && String(entry && entry.dateKey || '').startsWith(monthKey);
+    const expenses = (data.expenses || []).filter(inMonth);
+    const incomes = (data.incomes || []).filter(inMonth);
+    const cardAdjustments = (data.cardAdjustments || []).filter(inMonth);
+    const goalContributions = (data.goalContributions || []).filter(inMonth);
+    const cardPayments = (data.cardPayments || []).filter(inMonth);
+    const debtPayments = (data.debtPayments || []).filter(inMonth);
+    const activityDateKeys = (data.activityDateKeys || []).filter((dateKey) => monthKey && String(dateKey || '').startsWith(monthKey));
+    const dailySpent = roundMoney(expenses
+      .filter((entry) => entry.budgetImpact !== 'committed')
+      .reduce((sum, entry) => sum + Math.max(0, Number(entry.amount) || 0), 0));
+    const committedSpent = roundMoney(expenses
+      .filter((entry) => entry.budgetImpact === 'committed')
+      .reduce((sum, entry) => sum + Math.max(0, Number(entry.amount) || 0), 0));
+    const cardCosts = roundMoney(cardAdjustments.reduce((sum, entry) => (
+      sum + (entry.type === 'refund' ? -Math.max(0, Number(entry.amount) || 0) : Math.max(0, Number(entry.amount) || 0))
+    ), 0));
+    const income = roundMoney(incomes.reduce((sum, entry) => sum + Math.max(0, Number(entry.amount) || 0), 0));
+    const totalSpent = roundMoney(dailySpent + committedSpent + cardCosts);
+    const net = roundMoney(income - totalSpent);
+    const goalSaved = roundMoney(goalContributions.reduce((sum, entry) => sum + Math.max(0, Number(entry.amount) || 0), 0));
+    const transfers = roundMoney(
+      cardPayments.reduce((sum, entry) => sum + Math.max(0, Number(entry.amount) || 0), 0)
+      + debtPayments.reduce((sum, entry) => sum + Math.max(0, Number(entry.amount) || 0), 0),
+    );
+    const categories = {};
+    expenses.forEach((entry) => {
+      const category = String(entry.category || 'other');
+      categories[category] = roundMoney((categories[category] || 0) + Math.max(0, Number(entry.amount) || 0));
+    });
+    if (cardCosts !== 0) categories.card_costs = roundMoney((categories.card_costs || 0) + cardCosts);
+    const topCategoryEntry = Object.entries(categories)
+      .filter(([, amount]) => amount > 0)
+      .sort((a, b) => b[1] - a[1])[0] || null;
+    const activeDays = new Set([
+      ...expenses, ...incomes, ...cardAdjustments, ...goalContributions, ...cardPayments, ...debtPayments,
+    ].map((entry) => entry.dateKey).filter(Boolean).concat(activityDateKeys)).size;
+    let recommendedFocus = 'goal';
+    if (net < 0 || (income === 0 && totalSpent > 0)) recommendedFocus = 'cashflow';
+    else if (cardCosts > 0) recommendedFocus = 'cards';
+    else if (committedSpent > dailySpent && committedSpent > 0) recommendedFocus = 'commitments';
+    return {
+      monthKey,
+      income,
+      dailySpent,
+      committedSpent,
+      cardCosts,
+      totalSpent,
+      net,
+      goalSaved,
+      transfers,
+      activeDays,
+      recordCount: expenses.length + incomes.length + cardAdjustments.length + goalContributions.length + cardPayments.length + debtPayments.length,
+      topCategory: topCategoryEntry ? topCategoryEntry[0] : null,
+      topCategoryAmount: topCategoryEntry ? topCategoryEntry[1] : 0,
+      recommendedFocus,
+      isEmpty: activeDays === 0,
+    };
+  }
+
   function installmentQuote(principal, annualRate, months) {
     const amount = Math.max(0, Number(principal) || 0);
     const term = Math.max(1, Math.round(Number(months) || 1));
@@ -362,10 +432,11 @@
   }
 
   return {
-    WEEKLY_QUESTS, CHAPTERS, GOAL_TYPES, chapterFor, weeklyQuestProgress, routeModel,
+    WEEKLY_QUESTS, CHAPTERS, GOAL_TYPES, MONTHLY_FOCUS_OPTIONS, chapterFor, weeklyQuestProgress, routeModel,
     expeditionComplete, expeditionTargetDays, goalSaved, goalProgress, goalPace,
     monthlyCommitmentSchedule, creditStatementModel, applyCreditCardPayment, reverseCreditCardPayment,
     applyCreditCardAdjustment, reverseCreditCardAdjustment,
+    monthlyReviewModel,
     installmentQuote, purchaseEncounter,
   };
 });
