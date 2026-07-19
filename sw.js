@@ -1,21 +1,23 @@
-const CACHE_NAME = 'finance-rpg-v59';
-const APP_SHELL = [
+const CACHE_NAME = 'finance-rpg-v61';
+const CORE_SHELL = [
   './',
   './index.html',
-  './style.css?v=59',
-  './vault.js?v=59',
-  './gameplay.js?v=59',
-  './cashflow.js?v=59',
-  './ledger.js?v=59',
-  './advisor.js?v=59',
-  './app.js?v=59',
+  './style.css?v=61',
+  './vault.js?v=61',
+  './gameplay.js?v=61',
+  './cashflow.js?v=61',
+  './ledger.js?v=61',
+  './advisor.js?v=61',
+  './app.js?v=61',
   './manifest.webmanifest',
-  './assets/bg.png',
   './assets/camp-dawn-v2.png',
-  './assets/boss.png',
   './assets/hero.png',
   './assets/hero-female.png',
   './assets/strategist.png',
+];
+const OPTIONAL_ASSETS = [
+  './assets/bg.png',
+  './assets/boss.png',
   './assets/coin.png',
   './assets/flame.png',
   './assets/shield.png',
@@ -28,7 +30,10 @@ const APP_SHELL = [
 self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME)
-      .then((cache) => cache.addAll(APP_SHELL))
+      .then(async (cache) => {
+        await cache.addAll(CORE_SHELL);
+        await Promise.allSettled(OPTIONAL_ASSETS.map((asset) => cache.add(asset)));
+      })
       .then(() => self.skipWaiting())
   );
 });
@@ -48,8 +53,11 @@ self.addEventListener('fetch', (event) => {
   if (event.request.mode === 'navigate') {
     event.respondWith(
       fetch(event.request)
-        .then((response) => {
-          if (response.ok) caches.open(CACHE_NAME).then((cache) => cache.put('./index.html', response.clone()));
+        .then(async (response) => {
+          if (response.ok) {
+            const cache = await caches.open(CACHE_NAME);
+            await cache.put('./index.html', response.clone());
+          }
           return response;
         })
         .catch(() => caches.match('./index.html').then((cached) => cached || caches.match('./')))
@@ -57,15 +65,14 @@ self.addEventListener('fetch', (event) => {
     return;
   }
   event.respondWith(
-    caches.match(event.request).then((cached) => {
+    caches.match(event.request).then(async (cached) => {
       if (cached) return cached;
-      return fetch(event.request).then((response) => {
-        if (response.ok && response.type === 'basic') {
-          const copy = response.clone();
-          caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy));
-        }
-        return response;
-      });
+      const response = await fetch(event.request);
+      if (response.ok && response.type === 'basic') {
+        const cache = await caches.open(CACHE_NAME);
+        await cache.put(event.request, response.clone());
+      }
+      return response;
     })
   );
 });

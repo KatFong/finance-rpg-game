@@ -9,9 +9,17 @@
 <title>理財勇者</title>
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="assets/hero.png">
-<link rel="stylesheet" href="style.css?v=59">
+<link rel="stylesheet" href="style.css?v=61">
 </head>
 <body data-screen="home">
+
+<div class="boot-screen" id="boot-screen" role="status" aria-live="polite" aria-label="正在打開理財勇者">
+  <div class="boot-emblem" aria-hidden="true"><span></span></div>
+  <div class="boot-title"><span>COZY FINANCE RPG</span><strong>理財勇者</strong></div>
+  <div class="boot-progress" aria-hidden="true"><i></i><i></i><i></i></div>
+  <p id="boot-copy">正在打開營地……</p>
+</div>
+<script>window.__frpgBootFallback = window.setTimeout(function () { var boot = document.getElementById('boot-screen'); if (boot) boot.classList.add('boot-ready'); }, 4500);</script>
 
 <!-- ===== 頂欄 ===== -->
 <header id="topbar">
@@ -786,14 +794,14 @@
   </div>
 </div>
 
-<div id="toast" class="hidden"></div>
+<div id="toast" class="hidden" role="status" aria-live="polite" aria-atomic="true"></div>
 
 <script>window.FRPG_CONFIG = { advisorApiUrl: '' };</script>
-<script src="vault.js?v=59"></script>
-<script src="gameplay.js?v=59"></script>
-<script src="cashflow.js?v=59"></script>
-<script src="ledger.js?v=59"></script>
-<script src="advisor.js?v=59"></script>
-<script src="app.js?v=59"></script>
+<script src="vault.js?v=61"></script>
+<script src="gameplay.js?v=61"></script>
+<script src="cashflow.js?v=61"></script>
+<script src="ledger.js?v=61"></script>
+<script src="advisor.js?v=61"></script>
+<script src="app.js?v=61"></script>
 </body>
 </html>

@@ -649,6 +649,55 @@ function toast(msg) {
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => t.classList.add('hidden'), 2200);
 }
+
+let bootFinished = false;
+function waitForImage(image) {
+  if (!image) return Promise.resolve();
+  const loaded = image.complete && image.naturalWidth > 0;
+  if (loaded) return image.decode ? image.decode().catch(() => {}) : Promise.resolve();
+  return new Promise((resolve) => {
+    image.addEventListener('load', resolve, { once: true });
+    image.addEventListener('error', resolve, { once: true });
+  }).then(() => (image.decode ? image.decode().catch(() => {}) : undefined));
+}
+
+function finishBoot() {
+  const boot = $('boot-screen');
+  if (!boot || bootFinished) return;
+  const onboardingVisible = !$('onboard-mask').classList.contains('hidden');
+  const activeArt = onboardingVisible
+    ? [...document.querySelectorAll('#onboard-mask:not(.hidden) .ob-step:not(.hidden) img')]
+    : [...document.querySelectorAll('#screen-home.active img')];
+  const scene = new Image();
+  scene.src = 'assets/camp-dawn-v2.png';
+  const visualsReady = Promise.allSettled([scene, ...activeArt].map(waitForImage));
+  const timeout = new Promise((resolve) => setTimeout(resolve, 2400));
+  Promise.race([visualsReady, timeout]).then(() => {
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      bootFinished = true;
+      clearTimeout(window.__frpgBootFallback);
+      boot.classList.add('boot-ready');
+      if (!navigator.onLine) setTimeout(() => toast('離線模式 · 記帳仍會保留喺呢部裝置'), 320);
+    }));
+  });
+}
+
+function initAppLifecycle() {
+  window.addEventListener('offline', () => toast('已轉用離線模式 · 記帳仍可繼續'));
+  window.addEventListener('online', () => toast('已重新連線 · 營地同步檢查完成'));
+  if (!('serviceWorker' in navigator)) return;
+  const hadController = Boolean(navigator.serviceWorker.controller);
+  navigator.serviceWorker.register('sw.js').then((registration) => {
+    registration.addEventListener('updatefound', () => {
+      if (!hadController) return;
+      const worker = registration.installing;
+      if (!worker) return;
+      worker.addEventListener('statechange', () => {
+        if (worker.state === 'installed') toast('新版本已準備 · 下次打開會自動套用');
+      });
+    });
+  }).catch(() => {});
+}
 const popupQueue = [];
 function showNextPopup() {
   if (!$('pop-mask').classList.contains('hidden') || !popupQueue.length) return;
@@ -4118,6 +4167,7 @@ function init() {
     if (m && logExpense(m[1], Number(m[2]))) switchScreen('home');
     else toast('快速入帳格式錯誤');
   }
-  if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
+  initAppLifecycle();
+  finishBoot();
 }
 init();

@@ -40,6 +40,60 @@ body {
   overscroll-behavior: none;
 }
 
+/* ===== Resilient boot ===== */
+.boot-screen {
+  position: fixed;
+  inset: 0;
+  z-index: 120;
+  display: grid;
+  grid-template-rows: 1fr auto auto auto 1fr;
+  place-items: center;
+  gap: 12px;
+  padding: max(24px, env(safe-area-inset-top)) 24px max(24px, env(safe-area-inset-bottom));
+  overflow: hidden;
+  background: #edf6f2;
+  color: var(--ink);
+  opacity: 1;
+  transition: opacity .24s ease, visibility 0s linear .24s;
+}
+.boot-screen::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, #f7fcf9, #dcefeb);
+}
+.boot-screen.boot-ready { visibility: hidden; opacity: 0; pointer-events: none; }
+.boot-emblem {
+  position: relative;
+  grid-row: 2;
+  width: 68px;
+  height: 68px;
+  display: grid;
+  place-items: center;
+  border: 5px solid #fff;
+  border-radius: 50%;
+  background: var(--sky-deep);
+  box-shadow: 0 8px 0 rgba(47, 127, 104, .22), 0 16px 30px rgba(41, 70, 91, .14);
+}
+.boot-emblem::before, .boot-emblem::after, .boot-emblem span {
+  content: "";
+  position: absolute;
+  background: #fff;
+  border-radius: 3px;
+}
+.boot-emblem::before { width: 34px; height: 8px; }
+.boot-emblem::after { width: 8px; height: 34px; }
+.boot-emblem span { width: 16px; height: 16px; border: 4px solid var(--sun); border-radius: 50%; background: var(--sky-deep); }
+.boot-title { position: relative; grid-row: 3; text-align: center; }
+.boot-title span { display: block; color: var(--leaf-deep); font-size: 9px; font-weight: 900; }
+.boot-title strong { display: block; margin-top: 3px; font-size: 27px; line-height: 1; }
+.boot-progress { position: relative; grid-row: 4; display: flex; gap: 7px; height: 8px; align-items: center; }
+.boot-progress i { width: 7px; height: 7px; border-radius: 50%; background: var(--sky-deep); animation: boot-pulse .9s ease-in-out infinite alternate; }
+.boot-progress i:nth-child(2) { animation-delay: .18s; }
+.boot-progress i:nth-child(3) { animation-delay: .36s; }
+.boot-screen p { position: relative; grid-row: 5; align-self: start; color: var(--ink-soft); font-size: 11px; font-weight: 800; }
+@keyframes boot-pulse { to { opacity: .3; transform: translateY(-3px); } }
+
 button, input { font: inherit; }
 textarea { font: inherit; }
 button { touch-action: manipulation; }
