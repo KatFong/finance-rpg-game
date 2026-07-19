@@ -29,6 +29,12 @@ const COMMITMENT_TYPES = [
   { id: 'other', name: '其他' },
 ];
 
+const CARD_ADJUSTMENT_TYPES = [
+  { id: 'interest', name: '利息', ledger: '信用卡利息' },
+  { id: 'fee', name: '收費', ledger: '信用卡收費' },
+  { id: 'refund', name: '退款', ledger: '信用卡退款' },
+];
+
 const SHOP = [
   { id: 'sword', name: '勇者之劍', cost: 300, once: true, desc: '對慾望魔王嘅攻擊力 +15%（儲蓄傷害加成）' },
   { id: 'charm', name: '幸運咒文', cost: 250, once: true, desc: '記帳時寶箱出現率 +10%' },
@@ -57,6 +63,7 @@ const defaults = () => ({
   creditCards: [],         // {id, name, last4, creditLimit, currentBalance, statementBalance, minimumPayment, statementDueDate, statementDay, dueDay, annualRate}
   installments: [],        // {id, cardId, principal, termMonths, schedule:[]}
   cardPayments: [],        // {id, cardId, amount, statementApplied?, minimumApplied?, dateKey, ts}
+  cardAdjustments: [],     // {id, cardId, type, amount, balanceApplied, statementApplied, dateKey, ts}
   incomes: [],             // {id, ts, dateKey, source, amount}
   goals: [],               // {id, name, type, target, initialAmount, deadline, rewarded, completedAt}
   goalContributions: [],   // {id, goalId, amount, source:'new_saving'|'allocated', dateKey, ts}
@@ -93,6 +100,7 @@ function load() {
       state.commitments = Array.isArray(state.commitments) ? state.commitments : [];
       state.commitmentSkips = Array.isArray(state.commitmentSkips) ? state.commitmentSkips : [];
       state.decisionEncounters = Array.isArray(state.decisionEncounters) ? state.decisionEncounters : [];
+      state.cardAdjustments = Array.isArray(state.cardAdjustments) ? state.cardAdjustments : [];
       state.cashflowPlan = state.cashflowPlan && typeof state.cashflowPlan === 'object' ? state.cashflowPlan : null;
       return state;
     }
@@ -280,6 +288,7 @@ function dayHasMoneyActivity(k) {
   return dayActive(k)
     || (S.incomes || []).some((entry) => entry.dateKey === k)
     || (S.cardPayments || []).some((entry) => entry.dateKey === k)
+    || (S.cardAdjustments || []).some((entry) => entry.dateKey === k)
     || (S.goalContributions || []).some((entry) => entry.dateKey === k)
     || (S.repayments || []).some((entry) => entry.ts && keyOf(new Date(entry.ts)) === k);
 }
@@ -287,6 +296,7 @@ function moneyActivityCount(k) {
   return S.expenses.filter((entry) => entry.dateKey === k).length
     + (S.incomes || []).filter((entry) => entry.dateKey === k).length
     + (S.cardPayments || []).filter((entry) => entry.dateKey === k).length
+    + (S.cardAdjustments || []).filter((entry) => entry.dateKey === k).length
     + (S.goalContributions || []).filter((entry) => entry.dateKey === k).length
     + (S.repayments || []).filter((entry) => entry.ts && keyOf(new Date(entry.ts)) === k).length;
 }
@@ -406,8 +416,12 @@ function initIcons(root) {
 /* ===================== DOM helpers ===================== */
 const $ = (id) => document.getElementById(id);
 const fmt = (n) => {
-  const value = Math.round(Number(n) || 0);
-  return `${value < 0 ? '-$' : '$'}${Math.abs(value).toLocaleString('en-US')}`;
+  const value = Math.round(((Number(n) || 0) + Number.EPSILON) * 100) / 100;
+  const absolute = Math.abs(value);
+  return `${value < 0 ? '-$' : '$'}${absolute.toLocaleString('en-US', {
+    minimumFractionDigits: Number.isInteger(absolute) ? 0 : 2,
+    maximumFractionDigits: 2,
+  })}`;
 };
 const escapeHtml = (value) => String(value == null ? '' : value)
   .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
@@ -1315,6 +1329,8 @@ function reviewToday() {
   const committed = dayCommittedSpend(t);
   const income = (S.incomes || []).filter((entry) => entry.dateKey === t).reduce((sum, entry) => sum + Number(entry.amount || 0), 0);
   const cardPaid = (S.cardPayments || []).filter((entry) => entry.dateKey === t).reduce((sum, entry) => sum + Number(entry.amount || 0), 0);
+  const cardCosts = (S.cardAdjustments || []).filter((entry) => entry.dateKey === t)
+    .reduce((sum, entry) => sum + (entry.type === 'refund' ? -Number(entry.amount || 0) : Number(entry.amount || 0)), 0);
   const debtPaid = (S.repayments || []).filter((entry) => entry.ts && keyOf(new Date(entry.ts)) === t).reduce((sum, entry) => sum + Number(entry.amount || 0), 0);
   const goalSavedToday = (S.goalContributions || []).filter((entry) => entry.dateKey === t).reduce((sum, entry) => sum + Number(entry.amount || 0), 0);
   const noSpend = m.noSpend && daily === 0;
@@ -1324,6 +1340,7 @@ function reviewToday() {
     <div><span>固定／預留</span><b>${fmt(committed)}</b></div>
     <div><span>今日收入</span><b class="positive">${fmt(income)}</b></div>
     <div><span>還卡／還債</span><b>${fmt(cardPaid + debtPaid)}</b></div>
+    <div><span>卡片利息／收費／退款</span><b>${fmt(cardCosts)}</b></div>
     <div><span>願望儲蓄</span><b class="positive">${fmt(goalSavedToday)}</b></div>
   </div>`, {
     confirmLabel: '完成盤點',
@@ -2663,6 +2680,18 @@ function allLedgerEntries() {
         cashflowEffect: 0, timeLabel: ledgerTimeLabel(entry.ts),
       };
     }),
+    ...(S.cardAdjustments || []).map((entry) => {
+      const card = S.creditCards.find((item) => item.id === entry.cardId);
+      const type = CARD_ADJUSTMENT_TYPES.find((item) => item.id === entry.type) || CARD_ADJUSTMENT_TYPES[1];
+      const signedAmount = entry.type === 'refund' ? -Math.max(0, Number(entry.amount) || 0) : Math.max(0, Number(entry.amount) || 0);
+      return {
+        ...entry, amount: signedAmount, adjustmentType: entry.type, entryType: 'card_adjustment', type: 'expense', typeLabel: type.ledger,
+        name: entry.note || `${card ? card.name : '信用卡'} ${type.name}`,
+        category: '信用卡成本', tag: type.name, budgetLabel: '不扣日常',
+        account: card ? card.name : '', status: Number(entry.balanceApplied || 0) !== 0 ? '已同步卡片結欠' : '現有結欠已包括',
+        cashflowEffect: 0, timeLabel: ledgerTimeLabel(entry.ts),
+      };
+    }),
     ...(S.goalContributions || []).map((entry) => {
       const goal = S.goals.find((item) => item.id === entry.goalId);
       return {
@@ -3005,9 +3034,13 @@ function clearCashflowPlan() {
 function renderStats() {
   const mk = monthKey();
   const monthExp = S.expenses.filter((e) => e.dateKey.startsWith(mk));
-  const totalSpent = monthExp.reduce((s, e) => s + e.amount, 0);
+  const monthCardAdjustments = (S.cardAdjustments || []).filter((entry) => entry.dateKey.startsWith(mk));
+  const cardAdjustmentNet = monthCardAdjustments.reduce((sum, entry) => (
+    sum + (entry.type === 'refund' ? -Number(entry.amount || 0) : Number(entry.amount || 0))
+  ), 0);
+  const totalSpent = monthExp.reduce((s, e) => s + e.amount, 0) + cardAdjustmentNet;
   const dailySpent = monthExp.filter((entry) => expenseBudgetImpact(entry) === 'daily').reduce((sum, entry) => sum + entry.amount, 0);
-  const committedSpent = monthExp.filter((entry) => expenseBudgetImpact(entry) === 'committed').reduce((sum, entry) => sum + entry.amount, 0);
+  const committedSpent = monthExp.filter((entry) => expenseBudgetImpact(entry) === 'committed').reduce((sum, entry) => sum + entry.amount, 0) + cardAdjustmentNet;
   const monthIncome = (S.incomes || []).filter((entry) => entry.dateKey.startsWith(mk));
   const totalIncome = monthIncome.reduce((sum, entry) => sum + Number(entry.amount || 0), 0);
   const monthGoalContributions = (S.goalContributions || []).filter((entry) => entry.dateKey.startsWith(mk));
@@ -3054,12 +3087,13 @@ function renderStats() {
   // 分類
   const byCat = {};
   monthExp.forEach((e) => (byCat[e.cat] = (byCat[e.cat] || 0) + e.amount));
-  const entries = Object.entries(byCat).sort((a, b) => b[1] - a[1]);
-  const maxC = entries.length ? entries[0][1] : 1;
+  if (cardAdjustmentNet !== 0) byCat.bills = (byCat.bills || 0) + cardAdjustmentNet;
+  const entries = Object.entries(byCat).filter(([, value]) => Math.abs(value) >= 0.01).sort((a, b) => Math.abs(b[1]) - Math.abs(a[1]));
+  const maxC = entries.length ? Math.abs(entries[0][1]) : 1;
   $('cat-bars').innerHTML = entries.length
     ? entries.map(([cid, v]) => `<div class="catbar">
         <div class="cb-head"><span>${CATS.find((c) => c.id === cid).name}</span><b>${fmt(v)}</b></div>
-        <div class="cb-track"><div style="width:${(v / maxC) * 100}%"></div></div>
+        <div class="cb-track"><div style="width:${(Math.abs(v) / maxC) * 100}%"></div></div>
       </div>`).join('')
     : '<p class="tip">本月未有紀錄。</p>';
   // 完整足印圖鑑
@@ -3075,7 +3109,7 @@ function renderStats() {
   const recent = filteredEntries.slice(0, ledgerVisibleCount);
   $('history-summary').innerHTML = `
     <div><b class="income">${fmt(summary.income)}</b><span>實際收入</span></div>
-    <div><b class="expense">${fmt(summary.spending)}</b><span>實際支出</span></div>
+    <div><b class="expense">${fmt(summary.spending)}</b><span>淨實際支出</span></div>
     <div><b>${fmt(summary.net)}</b><span>已記收支差</span></div>`;
   $('history-result-status').textContent = `找到 ${summary.count} 筆 · 已顯示 ${recent.length} 筆${summary.transfers > 0 ? ` · 另有 ${fmt(summary.transfers)} 轉移` : ''}`;
   const hasFilters = ledgerFilters.month !== 'all' || ledgerFilters.type !== 'all' || !!ledgerFilters.query;
@@ -3097,6 +3131,11 @@ function renderStats() {
       ? `<div class="log-row decision-log-row">
         <div><span class="lr-cat">${escapeHtml(entry.name || '消費遭遇')}</span><span class="lr-date">${entry.dateKey.slice(5)}</span><span class="intent-tag decision-tag">${entry.status === 'waiting' ? (Number(entry.revisitAt || 0) <= Date.now() ? '待回看' : '封存中') : entry.status === 'passed' ? '已放下' : '準備記帳'}</span></div>
         <div class="log-amount"><span class="lr-amt transfer">${fmt(entry.amount)}</span>${entry.status === 'passed' ? '<span class="icon decision-check" data-icon="check"></span>' : `<button class="btn small ghost" data-open-decision="${entry.id}">回看</button>`}</div>
+      </div>`
+      : entry.entryType === 'card_adjustment'
+      ? `<div class="log-row">
+        <div><span class="lr-cat">${escapeHtml(entry.name)}</span><span class="lr-date">${entry.dateKey.slice(5)}</span><span class="intent-tag ${entry.adjustmentType === 'refund' ? 'income-tag' : 'committed-tag'}">${escapeHtml(entry.tag)}</span></div>
+        <div class="log-amount"><span class="lr-amt ${entry.adjustmentType === 'refund' ? 'income' : ''}">${entry.adjustmentType === 'refund' ? '+' : '-'}${fmt(Math.abs(entry.amount))}</span><button class="icon-btn log-delete" data-del-card-adjustment="${escapeHtml(entry.id)}" aria-label="刪除呢筆${escapeHtml(entry.tag)}" title="刪除"><span class="icon" data-icon="trash"></span></button></div>
       </div>`
       : entry.entryType === 'card_payment'
       ? `<div class="log-row">
@@ -3190,6 +3229,28 @@ function renderStats() {
         invalidateReview(payment.dateKey);
         save(); renderAll();
         toast('還款紀錄已刪除，卡片結欠已同步');
+      },
+    });
+  }));
+  $('recent-logs').querySelectorAll('[data-del-card-adjustment]').forEach((button) => (button.onclick = () => {
+    const adjustment = (S.cardAdjustments || []).find((entry) => entry.id === button.dataset.delCardAdjustment);
+    if (!adjustment) return;
+    const card = S.creditCards.find((entry) => entry.id === adjustment.cardId);
+    const type = CARD_ADJUSTMENT_TYPES.find((item) => item.id === adjustment.type) || CARD_ADJUSTMENT_TYPES[1];
+    popup(`刪除呢筆${type.name}？`, `<p class="confirm-copy"><b>${escapeHtml(card ? card.name : '信用卡')} · ${fmt(adjustment.amount)}</b><br>${Number(adjustment.balanceApplied || 0) !== 0 ? 'App 曾同步調整卡片結欠，刪除時會逆轉實際套用過嘅差額。' : '當時選擇咗現有結欠已包括，刪除只會移除足印。'}</p>`, {
+      confirmLabel: '確認刪除',
+      cancelLabel: '保留紀錄',
+      onConfirm: () => {
+        if (card && (Number(adjustment.balanceApplied || 0) !== 0 || Number(adjustment.statementApplied || 0) !== 0)) {
+          const restored = FinanceGameplay.reverseCreditCardAdjustment(card, adjustment);
+          card.currentBalance = restored.currentBalance;
+          if (card.statementBalance != null) card.statementBalance = restored.statementBalance;
+          card.minimumPayment = restored.minimumPayment;
+        }
+        S.cardAdjustments = S.cardAdjustments.filter((entry) => entry.id !== adjustment.id);
+        invalidateReview(adjustment.dateKey);
+        save(); renderAll();
+        toast(`${type.name}足印已刪除${card && Number(adjustment.balanceApplied || 0) !== 0 ? ' · 卡片結欠已同步' : ''}`);
       },
     });
   }));
@@ -3356,6 +3417,154 @@ function closeCardForm() {
 
 function closeCardPaymentForm() {
   $('card-payment-mask').classList.add('hidden');
+}
+
+let cardAdjustmentType = 'interest';
+let cardAdjustmentBalanceMode = 'apply';
+let cardAdjustmentStatementMode = 'statement';
+
+function closeCardAdjustment() {
+  $('card-adjustment-mask').classList.add('hidden');
+}
+
+function setCardAdjustmentType(type) {
+  if (!CARD_ADJUSTMENT_TYPES.some((item) => item.id === type)) return;
+  cardAdjustmentType = type;
+  document.querySelectorAll('[data-card-adjustment-type]').forEach((button) => {
+    const active = button.dataset.cardAdjustmentType === type;
+    button.classList.toggle('active', active);
+    button.setAttribute('aria-pressed', String(active));
+  });
+  updateCardAdjustmentHint();
+}
+
+function setCardAdjustmentBalanceMode(mode) {
+  if (!['apply', 'included'].includes(mode)) return;
+  cardAdjustmentBalanceMode = mode;
+  document.querySelectorAll('[data-card-adjustment-balance]').forEach((button) => {
+    const active = button.dataset.cardAdjustmentBalance === mode;
+    button.classList.toggle('active', active);
+    button.setAttribute('aria-pressed', String(active));
+  });
+  updateCardAdjustmentHint();
+}
+
+function setCardAdjustmentStatementMode(mode) {
+  if (!['statement', 'post'].includes(mode)) return;
+  cardAdjustmentStatementMode = mode;
+  document.querySelectorAll('[data-card-adjustment-statement]').forEach((button) => {
+    const active = button.dataset.cardAdjustmentStatement === mode;
+    button.classList.toggle('active', active);
+    button.setAttribute('aria-pressed', String(active));
+  });
+  updateCardAdjustmentHint();
+}
+
+function updateCardAdjustmentHint() {
+  const card = S.creditCards.find((item) => item.id === $('card-adjustment-card-id').value);
+  if (!card) return;
+  const statement = creditStatementModel(card);
+  const canChooseStatement = cardAdjustmentBalanceMode === 'apply' && statement.statementKnown;
+  $('card-adjustment-statement-group').classList.toggle('hidden', !canChooseStatement);
+  if (!canChooseStatement) cardAdjustmentStatementMode = 'post';
+  const amount = Number($('card-adjustment-amount').value);
+  const hint = $('card-adjustment-hint');
+  if (!(amount > 0)) {
+    hint.className = 'card-payment-hint info';
+    hint.textContent = cardAdjustmentBalanceMode === 'included'
+      ? '會只留低帳單足印，不再改動現有卡片結欠。'
+      : '輸入金額後，先會預覽卡片結欠點樣同步。';
+    return;
+  }
+  try {
+    const result = FinanceGameplay.applyCreditCardAdjustment(card, {
+      type: cardAdjustmentType,
+      amount,
+      balanceMode: cardAdjustmentBalanceMode,
+      statementMode: cardAdjustmentStatementMode,
+    });
+    if (cardAdjustmentBalanceMode === 'included') {
+      hint.className = 'card-payment-hint info';
+      hint.textContent = `只記足印；目前總結欠保持 ${fmt(statement.currentBalance)}，不會重複加數。`;
+      return;
+    }
+    const action = cardAdjustmentType === 'refund' ? '減至' : '增至';
+    hint.className = 'card-payment-hint success';
+    hint.textContent = `目前總結欠會${action} ${fmt(result.currentBalance)}${result.statementApplied !== 0 ? `；今期帳單變成 ${fmt(result.statementBalance)}，最低還款要按最新帳單再補。` : '；今期已記帳單保持不變。'}`;
+  } catch (error) {
+    hint.className = 'card-payment-hint warning';
+    hint.textContent = error && error.message ? error.message : '請核對帳單事件資料';
+  }
+}
+
+function openCardAdjustment(cardId) {
+  const card = S.creditCards.find((item) => item.id === cardId);
+  if (!card) return;
+  $('card-adjustment-form').reset();
+  $('card-adjustment-card-id').value = card.id;
+  $('card-adjustment-card-name').textContent = card.name;
+  $('card-adjustment-date').value = todayKey();
+  $('card-adjustment-date').max = todayKey();
+  cardAdjustmentType = 'interest';
+  cardAdjustmentBalanceMode = 'apply';
+  cardAdjustmentStatementMode = creditStatementModel(card).statementKnown ? 'statement' : 'post';
+  setCardAdjustmentType(cardAdjustmentType);
+  setCardAdjustmentBalanceMode(cardAdjustmentBalanceMode);
+  setCardAdjustmentStatementMode(cardAdjustmentStatementMode);
+  switchScreen('stats');
+  switchStatsView('cards');
+  $('card-adjustment-mask').classList.remove('hidden');
+  updateCardAdjustmentHint();
+  setTimeout(() => $('card-adjustment-amount').focus(), 80);
+}
+
+function saveCardAdjustment(event) {
+  event.preventDefault();
+  const card = S.creditCards.find((item) => item.id === $('card-adjustment-card-id').value);
+  const amount = Math.round((Number($('card-adjustment-amount').value) + Number.EPSILON) * 100) / 100;
+  const dateKey = $('card-adjustment-date').value;
+  if (!card || !(amount > 0) || !/^\d{4}-\d{2}-\d{2}$/.test(dateKey) || dateKey > todayKey()) {
+    toast('請檢查帳單事件金額同日期');
+    return;
+  }
+  let result;
+  try {
+    result = FinanceGameplay.applyCreditCardAdjustment(card, {
+      type: cardAdjustmentType,
+      amount,
+      balanceMode: cardAdjustmentBalanceMode,
+      statementMode: cardAdjustmentStatementMode,
+    });
+  } catch (error) {
+    toast(error && error.message ? error.message : '請核對帳單事件資料');
+    return;
+  }
+  card.currentBalance = result.currentBalance;
+  if (card.statementBalance != null) card.statementBalance = result.statementBalance;
+  card.minimumPayment = result.minimumPayment;
+  const type = CARD_ADJUSTMENT_TYPES.find((item) => item.id === cardAdjustmentType);
+  S.cardAdjustments.push({
+    id: `cardevent-${Date.now()}-${Math.floor(Math.random() * 10000)}`,
+    cardId: card.id,
+    type: cardAdjustmentType,
+    amount,
+    note: $('card-adjustment-note').value.trim().slice(0, 40) || null,
+    balanceMode: cardAdjustmentBalanceMode,
+    statementMode: cardAdjustmentStatementMode,
+    balanceApplied: result.balanceApplied,
+    statementApplied: result.statementApplied,
+    minimumInvalidated: result.minimumInvalidated,
+    minimumBefore: result.minimumBefore,
+    dateKey,
+    ts: Date.now(),
+  });
+  if (dateKey === todayKey()) {
+    invalidateReview(dateKey);
+    touchStreak();
+  }
+  const rewarded = dateKey === todayKey() && claimDailyReward('card-adjustment', 10, 15);
+  save(); closeCardAdjustment(); renderAll(); softVibrate([8, 22, 8]);
+  toast(`${type.name}足印已記錄${Number(result.balanceApplied || 0) !== 0 ? ' · 結欠已同步' : ' · 冇重複加結欠'}${rewarded ? ' · +10G · +15 XP' : ''}`);
 }
 
 function updateCardPaymentHint() {
@@ -3972,6 +4181,7 @@ function closeTopOverlay() {
   if (!$('commitment-payment-mask').classList.contains('hidden')) { closeCommitmentPayment(); return true; }
   if (!$('commitment-form-mask').classList.contains('hidden')) { closeCommitmentForm(); return true; }
   if (!$('card-payment-mask').classList.contains('hidden')) { closeCardPaymentForm(); return true; }
+  if (!$('card-adjustment-mask').classList.contains('hidden')) { closeCardAdjustment(); return true; }
   if (!$('card-form-mask').classList.contains('hidden')) { closeCardForm(); return true; }
   if (!$('log-mask').classList.contains('hidden')) { closeLogSheet(); return true; }
   if (!$('dialogue-panel').classList.contains('hidden')) { closeSceneDialogue(); return true; }
@@ -4118,6 +4328,20 @@ function init() {
     };
   });
   $('card-payment-mask').onclick = (event) => { if (event.target === $('card-payment-mask')) closeCardPaymentForm(); };
+  $('card-adjustment-form').onsubmit = saveCardAdjustment;
+  $('card-adjustment-close').onclick = closeCardAdjustment;
+  $('card-adjustment-cancel').onclick = closeCardAdjustment;
+  $('card-adjustment-amount').oninput = updateCardAdjustmentHint;
+  document.querySelectorAll('[data-card-adjustment-type]').forEach((button) => {
+    button.onclick = () => setCardAdjustmentType(button.dataset.cardAdjustmentType);
+  });
+  document.querySelectorAll('[data-card-adjustment-balance]').forEach((button) => {
+    button.onclick = () => setCardAdjustmentBalanceMode(button.dataset.cardAdjustmentBalance);
+  });
+  document.querySelectorAll('[data-card-adjustment-statement]').forEach((button) => {
+    button.onclick = () => setCardAdjustmentStatementMode(button.dataset.cardAdjustmentStatement);
+  });
+  $('card-adjustment-mask').onclick = (event) => { if (event.target === $('card-adjustment-mask')) closeCardAdjustment(); };
   $('btn-nospend').onclick = markNoSpend;
   $('expedition-claim').onclick = claimExpeditionBonus;
   $('log-mask').onclick = (e) => { if (e.target === $('log-mask')) closeLogSheet(); };
@@ -4150,6 +4374,7 @@ function init() {
     openCommitmentForm: () => openCommitmentForm(),
     openCardForm,
     openCardPaymentForm,
+    openCardAdjustment,
     speak: (speaker, text) => { switchScreen('home'); speak(speaker, text, sceneChoices(buildObjective())); },
   });
   initOnboard();

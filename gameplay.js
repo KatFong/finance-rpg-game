@@ -38,6 +38,7 @@
   ];
 
   const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
+  const roundMoney = (value) => Math.round(((Number(value) || 0) + Number.EPSILON) * 100) / 100;
 
   function chapterFor(totalDays) {
     const days = Math.max(0, Math.floor(Number(totalDays) || 0));
@@ -244,6 +245,63 @@
     return { currentBalance, statementBalance, minimumPayment };
   }
 
+  function applyCreditCardAdjustment(card, input) {
+    const settings = input || {};
+    const type = ['interest', 'fee', 'refund'].includes(settings.type) ? settings.type : null;
+    const amount = roundMoney(Math.max(0, Number(settings.amount) || 0));
+    if (!type || !(amount > 0)) throw new Error('卡片事件種類同金額無效');
+    const model = creditStatementModel(card);
+    const appliesToBalance = settings.balanceMode === 'apply';
+    const appliesToStatement = appliesToBalance && settings.statementMode === 'statement';
+    if (appliesToStatement && !model.statementKnown) throw new Error('今期帳單資料未完整');
+    if (type === 'refund' && appliesToBalance && amount > model.currentBalance) throw new Error('退款高過目前結欠');
+    const postStatementBalance = model.statementKnown
+      ? roundMoney(Math.max(0, model.currentBalance - model.statementDue))
+      : model.currentBalance;
+    if (type === 'refund' && appliesToBalance && !appliesToStatement && amount > postStatementBalance) {
+      throw new Error('退款高過截數後結欠，請改選今期帳單');
+    }
+    const direction = type === 'refund' ? -1 : 1;
+    const balanceApplied = appliesToBalance ? roundMoney(direction * amount) : 0;
+    const statementApplied = appliesToStatement
+      ? (direction > 0 ? amount : roundMoney(-Math.min(amount, model.statementDue)))
+      : 0;
+    const currentBalance = roundMoney(Math.max(0, model.currentBalance + balanceApplied));
+    const statementBalance = model.statementKnown
+      ? roundMoney(Math.max(0, model.statementDue + statementApplied))
+      : null;
+    const minimumInvalidated = statementApplied !== 0 && card && card.minimumPayment != null;
+    return {
+      currentBalance,
+      statementBalance,
+      minimumPayment: minimumInvalidated ? null : (card && card.minimumPayment != null ? roundMoney(card.minimumPayment) : null),
+      balanceApplied,
+      statementApplied,
+      minimumInvalidated,
+      minimumBefore: card && card.minimumPayment != null ? roundMoney(card.minimumPayment) : null,
+    };
+  }
+
+  function reverseCreditCardAdjustment(card, adjustment) {
+    const balanceApplied = roundMoney(Number(adjustment && adjustment.balanceApplied) || 0);
+    const statementApplied = roundMoney(Number(adjustment && adjustment.statementApplied) || 0);
+    const currentBalance = roundMoney(Math.max(0, Number(card && card.currentBalance || 0) - balanceApplied));
+    const statementKnown = card && card.statementBalance != null && Number.isFinite(Number(card.statementBalance));
+    const statementBalance = statementKnown
+      ? roundMoney(Math.min(currentBalance, Math.max(0, Number(card.statementBalance || 0) - statementApplied)))
+      : null;
+    const shouldRestoreMinimum = Boolean(adjustment && adjustment.minimumInvalidated)
+      && card && card.minimumPayment == null
+      && adjustment.minimumBefore != null;
+    return {
+      currentBalance,
+      statementBalance,
+      minimumPayment: shouldRestoreMinimum
+        ? roundMoney(Math.min(statementBalance == null ? currentBalance : statementBalance, Math.max(0, Number(adjustment.minimumBefore) || 0)))
+        : (card && card.minimumPayment != null ? roundMoney(card.minimumPayment) : null),
+    };
+  }
+
   function installmentQuote(principal, annualRate, months) {
     const amount = Math.max(0, Number(principal) || 0);
     const term = Math.max(1, Math.round(Number(months) || 1));
@@ -307,6 +365,7 @@
     WEEKLY_QUESTS, CHAPTERS, GOAL_TYPES, chapterFor, weeklyQuestProgress, routeModel,
     expeditionComplete, expeditionTargetDays, goalSaved, goalProgress, goalPace,
     monthlyCommitmentSchedule, creditStatementModel, applyCreditCardPayment, reverseCreditCardPayment,
+    applyCreditCardAdjustment, reverseCreditCardAdjustment,
     installmentQuote, purchaseEncounter,
   };
 });

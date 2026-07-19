@@ -32,7 +32,7 @@
     const income = list.filter((entry) => entry && entry.type === 'income')
       .reduce((sum, entry) => sum + Math.max(0, Number(entry.amount) || 0), 0);
     const spending = list.filter((entry) => entry && entry.type === 'expense')
-      .reduce((sum, entry) => sum + Math.max(0, Number(entry.amount) || 0), 0);
+      .reduce((sum, entry) => sum + (Number(entry.amount) || 0), 0);
     const transfers = list.filter((entry) => entry && entry.type === 'transfer')
       .reduce((sum, entry) => sum + Math.max(0, Number(entry.amount) || 0), 0);
     return {

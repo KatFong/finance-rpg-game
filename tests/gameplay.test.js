@@ -16,6 +16,8 @@ const {
   creditStatementModel,
   applyCreditCardPayment,
   reverseCreditCardPayment,
+  applyCreditCardAdjustment,
+  reverseCreditCardAdjustment,
   installmentQuote,
   purchaseEncounter,
 } = require('../gameplay.js');
@@ -199,6 +201,78 @@ test('restores statement and minimum progress when a tracked payment is deleted'
     currentBalance: 300,
     statementBalance: null,
     minimumPayment: null,
+  });
+});
+
+test('applies an actual interest charge to current and statement balances', () => {
+  const card = { currentBalance: 800, statementBalance: 600, minimumPayment: 80 };
+  assert.deepEqual(applyCreditCardAdjustment(card, {
+    type: 'interest', amount: 35.5, balanceMode: 'apply', statementMode: 'statement',
+  }), {
+    currentBalance: 835.5,
+    statementBalance: 635.5,
+    minimumPayment: null,
+    balanceApplied: 35.5,
+    statementApplied: 35.5,
+    minimumInvalidated: true,
+    minimumBefore: 80,
+  });
+});
+
+test('records an already included fee without double counting card balances', () => {
+  assert.deepEqual(applyCreditCardAdjustment(
+    { currentBalance: 500, statementBalance: 400, minimumPayment: 50 },
+    { type: 'fee', amount: 18, balanceMode: 'included', statementMode: 'statement' },
+  ), {
+    currentBalance: 500,
+    statementBalance: 400,
+    minimumPayment: 50,
+    balanceApplied: 0,
+    statementApplied: 0,
+    minimumInvalidated: false,
+    minimumBefore: 50,
+  });
+});
+
+test('applies and reverses a refund without inventing a negative card balance', () => {
+  const result = applyCreditCardAdjustment(
+    { currentBalance: 300, statementBalance: 120, minimumPayment: 30 },
+    { type: 'refund', amount: 180, balanceMode: 'apply', statementMode: 'statement' },
+  );
+  assert.equal(result.currentBalance, 120);
+  assert.equal(result.statementBalance, 0);
+  assert.equal(result.statementApplied, -120);
+  assert.deepEqual(reverseCreditCardAdjustment({
+    currentBalance: result.currentBalance,
+    statementBalance: result.statementBalance,
+    minimumPayment: result.minimumPayment,
+  }, result), {
+    currentBalance: 300,
+    statementBalance: 120,
+    minimumPayment: 30,
+  });
+  assert.throws(() => applyCreditCardAdjustment(
+    { currentBalance: 50, statementBalance: 50 },
+    { type: 'refund', amount: 80, balanceMode: 'apply', statementMode: 'statement' },
+  ), /退款/);
+});
+
+test('does not let a post-statement refund silently rewrite the current statement', () => {
+  assert.throws(() => applyCreditCardAdjustment(
+    { currentBalance: 800, statementBalance: 600, minimumPayment: 80 },
+    { type: 'refund', amount: 250, balanceMode: 'apply', statementMode: 'post' },
+  ), /截數後結欠/);
+  assert.deepEqual(applyCreditCardAdjustment(
+    { currentBalance: 800, statementBalance: 600, minimumPayment: 80 },
+    { type: 'refund', amount: 200, balanceMode: 'apply', statementMode: 'post' },
+  ), {
+    currentBalance: 600,
+    statementBalance: 600,
+    minimumPayment: 80,
+    balanceApplied: -200,
+    statementApplied: 0,
+    minimumInvalidated: false,
+    minimumBefore: 80,
   });
 });
 

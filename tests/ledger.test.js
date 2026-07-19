@@ -28,6 +28,17 @@ test('summarizes only real income and spending in the net figure', () => {
   });
 });
 
+test('subtracts card refunds from actual spending without calling them income', () => {
+  const result = summarizeEntries([
+    { type: 'expense', amount: 100 },
+    { type: 'expense', amount: -25 },
+    { type: 'income', amount: 500 },
+  ]);
+  assert.equal(result.spending, 75);
+  assert.equal(result.income, 500);
+  assert.equal(result.net, 425);
+});
+
 test('lists available ledger months from newest to oldest', () => {
   assert.deepEqual(monthKeys(entries), ['2026-07', '2026-06', '2026-05']);
 });

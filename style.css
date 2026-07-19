@@ -1519,7 +1519,11 @@ body[data-period="night"] .scene-sky {
 .credit-util > div { grid-column: 1 / -1; height: 7px; overflow: hidden; border-radius: 5px; background: #e0ebe8; }
 .credit-util i { display: block; height: 100%; border-radius: inherit; background: var(--coral); }
 .credit-rate-warning { display: block; margin-top: 8px; padding: 7px 8px; border-left: 3px solid var(--coral); background: #fff3ef; color: #a24d43; font-size: 10px; font-weight: 800; }
-.credit-pay-btn { width: 100%; margin-top: 10px; }
+.credit-card-actions { display: grid; grid-template-columns: minmax(92px, .8fr) minmax(0, 1.2fr); gap: 6px; margin-top: 10px; }
+.credit-card-actions .btn { min-width: 0; width: 100%; padding-inline: 7px; font-size: 9px; }
+.card-adjustment-types { margin: 10px 2px 2px; }
+.card-adjustment-group { margin-top: 11px; }
+.card-adjustment-sheet .card-payment-hint { margin-top: 10px; }
 .installment-list { margin-top: 10px; }
 .installment-row { padding: 10px 0; border-top: 1px solid var(--line); }
 .installment-head { display: flex; justify-content: space-between; align-items: baseline; gap: 9px; }
@@ -1565,6 +1569,7 @@ body[data-period="night"] .scene-sky {
   .lr-cat { max-width: 92px; }
   .history-head-actions .btn { padding-inline: 8px; }
   .history-summary > div { padding-inline: 3px; }
+  .credit-card-actions { grid-template-columns: 1fr; }
 }
 
 /* ===== Conversational onboarding ===== */

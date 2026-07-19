@@ -20,7 +20,14 @@
 
   const $ = (id) => typeof document !== 'undefined' ? document.getElementById(id) : null;
   const roundMoney = (n) => Math.round((Number(n) + Number.EPSILON) * 100) / 100;
-  const fmt = (n) => '$' + roundMoney(n || 0).toLocaleString('en-US', { maximumFractionDigits: 2 });
+  const fmt = (n) => {
+    const amount = roundMoney(n || 0);
+    const absolute = Math.abs(amount);
+    return `${amount < 0 ? '-$' : '$'}${absolute.toLocaleString('en-US', {
+      minimumFractionDigits: Number.isInteger(absolute) ? 0 : 2,
+      maximumFractionDigits: 2,
+    })}`;
+  };
   const escapeHtml = (value) => String(value == null ? '' : value)
     .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;').replace(/'/g, '&#039;');
@@ -877,13 +884,17 @@
         <p class="credit-cycle">每月截數 ${card.statementDay || '?'} 日 · 常規還款 ${card.dueDay || '?'} 日</p>
         ${rateWarning}
         ${card.creditLimit ? `<div class="credit-util"><span>額度使用</span><b>${Math.round(utilization)}%</b><div><i style="width:${utilization}%"></i></div></div>` : ''}
-        ${statement.currentBalance > 0 ? `<button class="btn small primary credit-pay-btn" data-card-pay="${escapeHtml(card.id)}">${statement.statementKnown && statement.statementDue > 0 ? '記帳單還款' : '記還款'}</button>` : ''}
+        <div class="credit-card-actions">
+          ${statement.currentBalance > 0 ? `<button class="btn small primary" data-card-pay="${escapeHtml(card.id)}">${statement.statementKnown && statement.statementDue > 0 ? '記帳單還款' : '記還款'}</button>` : ''}
+          <button class="btn small ghost" data-card-adjustment="${escapeHtml(card.id)}">記利息／收費／退款</button>
+        </div>
         <div class="installment-list">${planRows}</div>
       </article>`;
     }).join('');
     if (bridge.initIcons) bridge.initIcons(list);
     list.querySelectorAll('[data-pay-plan]').forEach((button) => (button.onclick = () => markNextPayment(button.dataset.payPlan)));
     list.querySelectorAll('[data-card-pay]').forEach((button) => (button.onclick = () => bridge.openCardPaymentForm(button.dataset.cardPay)));
+    list.querySelectorAll('[data-card-adjustment]').forEach((button) => (button.onclick = () => bridge.openCardAdjustment(button.dataset.cardAdjustment)));
     list.querySelectorAll('[data-card-edit]').forEach((button) => {
       button.onclick = () => bridge.openCardForm(button.dataset.cardEdit);
     });

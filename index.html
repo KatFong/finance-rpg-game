@@ -9,7 +9,7 @@
 <title>理財勇者</title>
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="assets/hero.png">
-<link rel="stylesheet" href="style.css?v=61">
+<link rel="stylesheet" href="style.css?v=63">
 </head>
 <body data-screen="home">
 
@@ -525,6 +525,49 @@
   </form>
 </div>
 
+<!-- ===== 信用卡帳單事件 ===== -->
+<div class="sheet-mask hidden" id="card-adjustment-mask">
+  <form class="sheet account-sheet card-adjustment-sheet" id="card-adjustment-form" role="dialog" aria-modal="true" aria-labelledby="card-adjustment-title">
+    <div class="sheet-handle"></div>
+    <div class="form-sheet-head">
+      <div><span>帳單事件</span><h3 id="card-adjustment-title">記利息、收費或退款</h3></div>
+      <button class="icon-btn" id="card-adjustment-close" type="button" aria-label="關閉信用卡帳單事件表格" title="關閉"><span class="icon" data-icon="close"></span></button>
+    </div>
+    <input id="card-adjustment-card-id" type="hidden">
+    <p class="form-note"><b id="card-adjustment-card-name">信用卡</b> · 呢類足印唔扣日常安心額；還款請用原本「記還款」。</p>
+    <div class="decision-segments three card-adjustment-types" role="group" aria-label="帳單事件種類">
+      <button class="active" type="button" data-card-adjustment-type="interest" aria-pressed="true">利息</button>
+      <button type="button" data-card-adjustment-type="fee" aria-pressed="false">收費</button>
+      <button type="button" data-card-adjustment-type="refund" aria-pressed="false">退款</button>
+    </div>
+    <div class="account-form-grid payment-form-grid">
+      <label class="full"><span>實際金額</span><input id="card-adjustment-amount" type="number" inputmode="decimal" min="0.01" step="0.01" placeholder="例如 128.50" required></label>
+      <label class="full"><span>入帳日期</span><input id="card-adjustment-date" type="date" required></label>
+      <label class="full"><span>名稱／備註 <small>選填</small></span><input id="card-adjustment-note" maxlength="40" placeholder="例如：財務費用、年費回贈"></label>
+    </div>
+    <div class="decision-group card-adjustment-group">
+      <div class="decision-group-head"><b>App 目前結欠有冇包括呢筆？</b><span>防止重複加數</span></div>
+      <div class="decision-segments" role="group" aria-label="結欠同步方式">
+        <button class="active" type="button" data-card-adjustment-balance="apply" aria-pressed="true">尚未包括 · 幫我同步</button>
+        <button type="button" data-card-adjustment-balance="included" aria-pressed="false">已經包括 · 只留足印</button>
+      </div>
+    </div>
+    <div class="decision-group card-adjustment-group" id="card-adjustment-statement-group">
+      <div class="decision-group-head"><b>會落喺邊一期？</b><span>只影響已記帳單</span></div>
+      <div class="decision-segments" role="group" aria-label="帳單所屬期數">
+        <button class="active" type="button" data-card-adjustment-statement="statement" aria-pressed="true">今期帳單</button>
+        <button type="button" data-card-adjustment-statement="post" aria-pressed="false">截數後／下期</button>
+      </div>
+    </div>
+    <p class="card-payment-hint info" id="card-adjustment-hint" aria-live="polite"></p>
+    <p class="form-note">只記發卡行實際入帳項目。若原本簽帳已經喺足印圖鑑，退款會降低淨支出；最低還款受影響時，App 會要求按最新帳單再補資料。</p>
+    <div class="form-sheet-actions">
+      <button class="btn ghost" id="card-adjustment-cancel" type="button">取消</button>
+      <button class="btn primary" type="submit">確認帳單足印</button>
+    </div>
+  </form>
+</div>
+
 <!-- ===== 軍師 AI 對話 ===== -->
 <div class="sheet-mask hidden" id="advisor-mask">
   <div class="sheet advisor-sheet" id="advisor-sheet" role="dialog" aria-modal="true" aria-labelledby="advisor-title">
@@ -797,11 +840,11 @@
 <div id="toast" class="hidden" role="status" aria-live="polite" aria-atomic="true"></div>
 
 <script>window.FRPG_CONFIG = { advisorApiUrl: '' };</script>
-<script src="vault.js?v=61"></script>
-<script src="gameplay.js?v=61"></script>
-<script src="cashflow.js?v=61"></script>
-<script src="ledger.js?v=61"></script>
-<script src="advisor.js?v=61"></script>
-<script src="app.js?v=61"></script>
+<script src="vault.js?v=63"></script>
+<script src="gameplay.js?v=63"></script>
+<script src="cashflow.js?v=63"></script>
+<script src="ledger.js?v=63"></script>
+<script src="advisor.js?v=63"></script>
+<script src="app.js?v=63"></script>
 </body>
 </html>
